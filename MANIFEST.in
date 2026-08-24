@@ -1,0 +1,3 @@
+include LICENSE README.md STATUS.md PROVENANCE.md
+recursive-include src/rehostry_bdn9/configs *.yaml
+recursive-include tools *.py

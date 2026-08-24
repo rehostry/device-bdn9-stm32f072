@@ -1,0 +1,179 @@
+# Copyright 2026 Christopher Wright
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Keebio BDN9 rev2 -- QMK on ChibiOS on a rehosted STM32F072CB, Cortex-M0 /
+# ARMv6-M.  HALucinator config, unicorn backend.
+#
+# STRIPPED IMAGE -- raw .bin, no ELF, no symbols, no sections.  Every intercept
+# address is recovered by disassembling the image and re-verified by
+# tools/extract_firmware.py, which HARD-FAILS if any of them has moved.  Every
+# symbol name in bdn9_addrs.yaml is synthetic.  See PROVENANCE.md.
+#
+# ARMv6-M, NOT ARMv7-M.  Cortex-M0 has **no VTOR**: the vector table is fetched
+# from address 0, which on an STM32 booting from flash is the flash alias.  So
+# flash is mapped BOTH at 0x08000000 and at 0x00000000, and the backend's
+# default `_vtor = 0` is exactly right -- nothing calls set_vtor().  The 48-entry
+# vector table (16 exceptions + 32 IRQ lines) is itself the M0 evidence.
+#
+# Memory map (STM32F072CB, RM0091):
+#   flash  0x08000000  128 KB   (image is 46,880 B; the rest is erased 0xFF and
+#                                is where QMK's wear-levelling EEPROM lives)
+#   SRAM   0x20000000   16 KB   MSP top 0x20000400, PSP top 0x20000C00
+#   APB    0x40000000 .. 0x40018000
+#   AHB1   0x40020000 .. 0x40024000   DMA1 / RCC / FLASH iface / CRC
+#   AHB2   0x48000000 .. 0x48001800   GPIOA..GPIOF
+#   sysmem 0x1FFFC800 DFU ROM, 0x1FFFF7AC die UID
+#   PPB    0xE0000000  auto-mapped by the backend
+machine:
+  # unicorn's M-profile decoder.  ARMv6-M is a strict subset of the ARMv7-M
+  # instruction set unicorn's cortex-m3 model decodes, so the M0 image runs on
+  # it; HAL_CORTEXM_CPU_MODEL (spawn.py) is what selects the model.
+  arch: cortex-m3
+  cpu_model: cortex-m3
+  entry_addr: 0x080000c1          # Reset_Handler branches straight to crt0
+  init_sp: 0x20000400             # __main_stack_end__ (MSP).  crt0 then sets
+                                  # PSP = 0x20000C00 and CONTROL.SPSEL, so
+                                  # threads run on PSP and handlers on MSP.
+  vector_base: 0x00000000
+  interrupt_controller:
+    type: cortex_m
+
+memories:
+  # The Cortex-M boot alias.  MANDATORY on ARMv6-M: with no VTOR the core
+  # fetches every vector from low memory, so this is where interrupts vector
+  # from.
+  alias:
+    base_addr: 0x00000000
+    file: bdn9.bin
+    permissions: r-x
+    size: 0x00020000
+  flash:
+    base_addr: 0x08000000
+    file: bdn9.bin
+    permissions: rwx              # QMK's wear-levelling EEPROM programs the
+                                  # erased flash above the image
+    size: 0x00020000
+  sram:
+    base_addr: 0x20000000
+    permissions: rw-
+    size: 0x00004000
+  halucinator-irq: { base_addr: 0x03ffc000, size: 0x00004000 }
+  halucinator:     { base_addr: 0x04000000, size: 0x00100000 }
+
+peripherals:
+  # ---- ST system memory -----------------------------------------------------
+  # The DFU ROM (+0x800) and the factory calibration page (+0x37AC) are 14 kB
+  # apart but regions must be 4 kB-aligned and must not overlap, so they share
+  # one model.  The die UID here is the M4 oracle -- see sysmem.py.
+  sysmem:
+    base_addr: 0x1fffc000
+    emulate: rehostry_bdn9.peripheral_models.sysmem.Stm32F0SystemMemory
+    permissions: r--
+    size: 0x00004000
+
+  # ---- APB ------------------------------------------------------------------
+  # TIM2 (+0x000) is ChibiOS' tickless system time base -- a free-running
+  # counter plus the CC1 compare that is the only thing that ever wakes a
+  # sleeping thread, and the only reason QMK's 1500 ms USB-attach sleep ever
+  # ends.  TIM3 (+0x400) shares the page and has a live vector (IRQ 16).
+  tim2:
+    base_addr: 0x40000000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_timers.Stm32F0Tim2Page
+    permissions: rw-
+    size: 0x00001000
+  soc_a:                          # TIM6 / TIM7
+    base_addr: 0x40001000
+    emulate: rehostry_bdn9.peripheral_models.soc_catchall.SocCatchAll
+    permissions: rw-
+    size: 0x00001000
+  # TIM14 (+0x000) is the generic polled microsecond delay; RTC (+0x800) and
+  # WWDG (+0xC00) share the page and fall through to storage.
+  tim14:
+    base_addr: 0x40002000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_timers.Stm32F0Tim14Page
+    permissions: rw-
+    size: 0x00001000
+  soc_b:                          # IWDG / SPI2 / USART2..4
+    base_addr: 0x40003000
+    emulate: rehostry_bdn9.peripheral_models.soc_catchall.SocCatchAll
+    permissions: rw-
+    size: 0x00002000
+  # THE SEAM.  The USB device peripheral at 0x40005C00, inside this page (I2C1
+  # and I2C2 share it and fall through to storage).  19 literal-pool references
+  # in the image; not an OTG core.
+  usb_regs:
+    base_addr: 0x40005000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_usb.Stm32F0UsbRegs
+    permissions: rw-
+    size: 0x00001000
+  # USB packet memory: 1 KB seen by the CPU 1:1 (the STM32F1's 2:1
+  # halfword-in-32-bit-slot scheme does NOT apply to the F0).  CRS shares the
+  # page at +0xC00 and falls through to storage inside the same model.
+  usb_pma:
+    base_addr: 0x40006000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_usb.Stm32F0UsbPma
+    permissions: rw-
+    size: 0x00001000
+  soc_c:                          # PWR / DAC / CEC / SYSCFG / EXTI / COMP
+    base_addr: 0x40007000
+    emulate: rehostry_bdn9.peripheral_models.soc_catchall.SocCatchAll
+    permissions: rw-
+    size: 0x0000b000              # -> 0x40012000
+  soc_d:                          # ADC / TIM1 / SPI1 / USART1 / TIM15..17 /
+    base_addr: 0x40012000         # DBGMCU / DMA1 / CRC
+    emulate: rehostry_bdn9.peripheral_models.soc_catchall.SocCatchAll
+    permissions: rw-
+    size: 0x0000f000              # -> 0x40021000
+  # RCC.  ChibiOS' stm32_clock_init is a chain of write-then-read-back-until-
+  # equal loops, which is precisely the shape the busy-wait breaker cannot
+  # satisfy (playbook 2.40).
+  rcc:
+    base_addr: 0x40021000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_rcc.Stm32F0Rcc
+    permissions: rw-
+    size: 0x00001000
+  flash_if:
+    base_addr: 0x40022000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_rcc.Stm32F0FlashIface
+    permissions: rw-
+    size: 0x00001000
+  soc_e:
+    base_addr: 0x40023000
+    emulate: rehostry_bdn9.peripheral_models.soc_catchall.SocCatchAll
+    permissions: rw-
+    size: 0x0000d000              # -> 0x40030000
+
+  # ---- AHB2 -----------------------------------------------------------------
+  # GPIOA..GPIOF.  NOT a catch-all: this board has NO matrix scan -- it uses
+  # QMK's DIRECT_PINS, nine switches each on their own pin, read from a table
+  # at 0x0800AE2C, plus three rotary encoders read from 0x0800AF7C/0x0800AF88.
+  # Left to the catch-all, the busy-wait breaker escalates IDR and the firmware
+  # sees phantom keys for ever.  IDR is derived from MODER/PUPDR/ODR instead.
+  gpio:
+    base_addr: 0x48000000
+    emulate: rehostry_bdn9.peripheral_models.stm32f0_gpio.Stm32F0GpioPage
+    permissions: rw-
+    size: 0x00002000              # GPIOA..GPIOF
+
+intercepts:
+  # ChibiOS' ARMv6-M port switches context through an NMI: _port_exit_from_isr
+  # writes SCB->ICSR.NMIPENDSET and then spins in `b .`.  unicorn implements no
+  # NMIPENDSET, so without this the kernel wedges on the FIRST interrupt it
+  # ever takes, with no fault and no output.
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosNmiSwitch
+    function: port_exit_from_isr_spin
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosNmiSwitch
+    function: port_exit_from_isr
+  # The idle thread is `wfi; b .-2`.  Reaching it is the kernel stating it has
+  # nothing to do until a deadline, so it is where guest time catches up to the
+  # armed TIM2 compare and where the queued TIM2 interrupt is delivered.
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosIdlePump
+    function: idle_thread_wfi
+  # The firmware's OWN failure addresses.  Watched, never pumped: a device that
+  # looks busy must not be mistaken for one that is working.
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosHaltProbe
+    function: sys_halt_spin
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosHaltProbe
+    function: unhandled_exception_spin
+  - class: rehostry_bdn9.bp_handlers.chibios_pump.ChibiosHaltProbe
+    function: bootloader_jump_spin

@@ -57,6 +57,8 @@ LANDMARKS = {
     # ChibiOS context-switches through NMI and unicorn implements no
     # NMIPENDSET, so this spin is a mandatory intercept.
     "port_exit_from_isr_spin": (0x080001D0, 0xE7FE),
+    # its first instruction: `bl chSchDoReschedule`
+    "port_exit_from_isr": (0x080001C6, 0xF007),
     # ChibiOS idle thread: `wfi; b .-2`
     "idle_thread_wfi": (0x08007F0C, 0xBF30),
     # chSysHalt(): `cpsid i; ...; b .`  -- the firmware's own panic signature

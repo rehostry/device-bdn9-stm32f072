@@ -1,0 +1,56 @@
+# Copyright 2026 Christopher Wright
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rehostry-bdn9"
+version = "0.0.1"
+description = "Keebio BDN9 rev2 (QMK/ChibiOS on an STM32F072, Cortex-M0) as a standalone, pip-installable HALucinator device."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Christopher Wright" }]
+classifiers = [
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
+keywords = ["halucinator", "rehosting", "firmware", "emulation"]
+
+# Runtime deps for the standalone CLI + web panel. HALucinator itself is a
+# runtime dependency too, but it is not on PyPI, so it is NOT listed here --
+# install the dev core into the same venv
+# (`halucinator[unicorn] @ git+https://github.com/rehostry/halucinator.git@dev`)
+# so `sys.executable` / `HAL_PY` reaches it. No `HALUCINATOR_SRC` injection.
+dependencies = [
+    "pyzmq>=24",
+    "PyYAML>=6",
+]
+
+[project.optional-dependencies]
+# Needed only for the co-simulation binding (rehostry_bdn9.binding.make_device).
+orchestrator = ["rehostry-orchestrator"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+rehostry-bdn9 = "rehostry_bdn9.cli:main"
+rehostry-bdn9-decoy = "rehostry_bdn9.tools_decoy:main"
+rehostry-bdn9-panel = "rehostry_bdn9.bdn9_panel:main"
+rehostry-bdn9-attack = "rehostry_bdn9.attack:main"
+
+# Forward-looking: once HALucinator gains entry-point plugin discovery, installing
+# this package will auto-register the device. Harmless until then.
+[project.entry-points."halucinator.devices"]
+bdn9 = "rehostry_bdn9:bdn9"
+
+[project.urls]
+Homepage = "https://github.com/rehostry/device-bdn9-stm32f072"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the configs (incl. the derived addr map). Firmware bytes are NOT shipped:
+# the BDN9 image is GPLv2 QMK, it is .gitignore'd, and tools/extract_firmware.py
+# regenerates it (and hard-fails on a different image).
+rehostry_bdn9 = ["configs/*.yaml"]
