@@ -775,7 +775,11 @@ def main() -> int:
                                           "hid_encoder_report_round_trip",
                                           "raw_hid_via_interface_present",
                                           "control")}))
-    return 0 if (res.get("landed") and res.get("milestone") == "M4") else 1
+    # Non-zero below M4. Compare the RUNG, not the string: the first run
+    # to grade M5+ would otherwise exit 1 and be read as a failure.
+    import re as _re
+    _m = _re.match(r"M(\d+)", res.get("milestone") or "")
+    return 0 if (res.get("landed") and _m and int(_m.group(1)) >= 4) else 1
 
 
 if __name__ == "__main__":
