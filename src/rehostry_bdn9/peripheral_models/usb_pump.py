@@ -167,9 +167,18 @@ def pump(force: bool = False) -> None:
         # slot is literally 0 and inject_irq would load it into PC (2.74).
         try:
             slot = backend.read_memory((16 + USB_IRQ) * 4, 4, 1)
-            _vector_ok = bool(slot)
-        except Exception:  # noqa: BLE001
-            _vector_ok = True
+        except Exception as exc:  # noqa: BLE001
+            # The check ITSELF failed, so we do not know whether the vector is
+            # installed. Assuming it is (the previous behaviour) injects an IRQ
+            # on exactly the evidence that says nothing -- and if the slot is in
+            # fact 0, inject_irq loads 0 into PC (2.74). Stay undecided: leave
+            # `_vector_ok` None so the next pump retries, and inject nothing on
+            # this one. A transient read failure therefore costs one deferred
+            # interrupt, not a derailed guest.
+            log.error("usb_pump: could not read the vector slot for IRQ %d "
+                      "(%s) -- not injecting; will re-check", USB_IRQ, exc)
+            return
+        _vector_ok = bool(slot)
         if not _vector_ok:
             log.error("usb_pump: vector slot for IRQ %d is zero -- the "
                       "firmware never installed a USB handler", USB_IRQ)
