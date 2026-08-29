@@ -1,3 +1,4 @@
+<!-- rehostry-census: milestone=M4 landed=true verdict=M4-OK verified=2026-08-29 method=live-run -->
 <!-- Copyright 2026 Christopher Wright; SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Status — device-bdn9-stm32f072
 
