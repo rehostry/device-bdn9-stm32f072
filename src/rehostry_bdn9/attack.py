@@ -80,6 +80,42 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import paths, spawn
 
+
+_LOG_POS: dict = {}
+_LOG_BUF: dict = {}
+
+
+def _read_log_incremental(path: str) -> str:
+    """The spawn log so far, read INCREMENTALLY from a saved offset.
+
+    This replaces ``open(path).read()``, which re-read the WHOLE file on every
+    pass of a ~1 Hz readiness poll. That is harmless for this device's own few
+    kB of log and catastrophic when anything else is writing to the same path:
+    an abandoned emulator holding a multi-GB log open makes each pass cost
+    seconds. The client then connects late, a frame the guest transmitted
+    before the connect is missed, and the run grades the device BELOW its real
+    rung -- an instrument artefact, not a property of the firmware.
+
+    Reading from a saved offset makes the poll cost independent of the file's
+    size and of any other writer. If the file shrank (a new run truncated it)
+    the offset is reset so the fresh contents are not skipped.
+    """
+    try:
+        size = os.path.getsize(path)
+        if size < _LOG_POS.get(path, 0):
+            _LOG_POS[path] = 0
+            _LOG_BUF[path] = ""
+        with open(path, "rb") as fh:
+            fh.seek(_LOG_POS.get(path, 0))
+            chunk = fh.read()
+        if chunk:
+            _LOG_POS[path] = _LOG_POS.get(path, 0) + len(chunk)
+            _LOG_BUF[path] = _LOG_BUF.get(path, "") + chunk.decode("utf-8", "replace")
+    except OSError:
+        pass
+    return _LOG_BUF.get(path, "")
+
+
 # ---------------------------------------------------------------------------
 # THE PRE-BOOT PREDICTION.  Copied verbatim from PROVENANCE.md section 4b,
 # which was committed -- as its own commit, containing nothing that can boot the
@@ -468,7 +504,7 @@ def run_attack(on_stage=None, log_dir: Optional[str] = None,
         bound = False
         for _ in range(40):
             try:
-                if marker.search(open(log_path, errors="replace").read()):
+                if marker.search(_read_log_incremental(log_path)):
                     bound = True
                     break
             except OSError:
@@ -630,7 +666,7 @@ def run_attack(on_stage=None, log_dir: Optional[str] = None,
                   match="MATCH" if e == o else "MISMATCH")
 
         # --- 10. did the firmware panic? -----------------------------------
-        text = open(log_path, errors="replace").read()
+        text = _read_log_incremental(log_path)
         panicked = ("reached its own chSysHalt()" in text
                     or "took an exception it has no handler for" in text)
         faulted = bool(re.search(r"UC_ERR|FETCH-DERAIL", text))
