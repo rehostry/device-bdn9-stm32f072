@@ -1,15 +1,18 @@
-<!-- rehostry-census: milestone=M4 landed=true verdict=M4-OK verified=2026-08-29 method=live-run -->
+<!-- rehostry-census: milestone=M8 landed=true verdict=M4-OK verified=2026-09-01 method=live-run -->
 <!-- Copyright 2026 Christopher Wright; SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Status — device-bdn9-stm32f072
 
-**Milestone reached: M4.** A Keebio BDN9 rev2 — a nine-key macropad with three
-rotary encoders, **QMK on ChibiOS on an STM32F072, Cortex-M0 / ARMv6-M** — boots
-from its own stripped 46 880-byte vendor image, brings up its clocks and its
-wear-levelling flash EEPROM, runs the ChibiOS scheduler through its ARMv6-M NMI
-context switch, enumerates against a modelled USB host, emits **every descriptor
-byte-for-byte as predicted before the first boot**, round-trips a per-run nonce
-through HID class requests, and turns its **encoders into real HID reports on
-two different endpoints**.
+**Milestone reached: M8.** Interface parity is **3 / 3** — every interface the
+firmware's own CONFIGURATION descriptor declares passes a verified round trip.
+
+A Keebio BDN9 rev2 — a nine-key macropad with three rotary encoders, **QMK on
+ChibiOS on an STM32F072, Cortex-M0 / ARMv6-M** — boots from its own stripped
+46 880-byte vendor image, brings up its clocks and its wear-levelling flash
+EEPROM, runs the ChibiOS scheduler through its ARMv6-M NMI context switch,
+enumerates against a modelled USB host, emits **every descriptor byte-for-byte
+as predicted before the first boot**, round-trips a per-run nonce through HID
+class requests, and turns its **encoders into real HID reports on two different
+endpoints**.
 
 | level | means | status |
 |---|---|---|
@@ -17,10 +20,158 @@ two different endpoints**.
 | M2 | drivers initialise | **earned** — the firmware's own RCC/PLL bring-up (`SW=0` → `SW=2`), its flash-controller unlock and four real page erases at 0x0801E000–0x0801FFFF, its `CNTR`/`BTABLE`/`EP0R` USB setup, its `BCDR.DPPU` attach, and **its own printf** — `"USB configured.\n"` on its console HID endpoint (EP3, usage page `0xFF31`) |
 | M3 | scheduler runs | **earned** — ChibiOS context-switches through `NMI` on every reschedule (thousands per run), sleeps its 1500 ms `chThdSleepMilliseconds` in `init_usb_driver()` against its own tickless TIM2 compare, and idles in its own `wfi` |
 | M4 | real protocol round trip | **earned** — full USB enumeration byte-identical to `PROVENANCE.md`, a serial string the guest computes from a die UID chosen this spawn, a 16-bit nonce round-tripped through `SET_PROTOCOL`/`GET_PROTOCOL`, and six encoder rotations producing six distinct HID reports |
+| **M5** | two independent interfaces | **earned** — see "Why these are three interfaces" below. The decisive evidence is that class state is **per-interface, not global**: interfaces 0 and 2 hold *different* attacker-chosen idle bytes at the same time and both follow a swap |
+| **M6** | stateful | **earned** — the same `GET_PROTOCOL(wIndex=0)` returns a different, correct answer at each of sixteen attacker-chosen states; and the same `GET_IDLE(wIndex=i)` returns one value before a swap and the other after |
+| **M7** | adversarial tolerance | **earned** — seven malformed control requests each stalled leaking **zero** bytes, a `wLength=255` read bounded to the descriptor's true 18 bytes, and known-good traffic still correct on **all three** interfaces afterwards |
+| **M8** | interface parity | **earned, 3/3** — every interface in the independently derived inventory passes |
+
+```
+RESULT: {"booted": true, "landed": true, "milestone": "M8",
+         "interface_parity": "3/3", "interfaces_passed": [0, 1, 2],
+         "iface0_boot_keyboard_round_trip": true,
+         "iface1_shared_hid_round_trip": true,
+         "iface2_console_hid_round_trip": true,
+         "isolation_m5": true, "stateful_m6": true, "adversarial_m7": true,
+         "m8_claimed": true, "usb_round_trip": true,
+         "hid_encoder_report_round_trip": true,
+         "hid_keystroke_round_trip": false,   <- a PREDICTED negative, §3b
+         "raw_hid_via_interface_present": false}
+```
+
+Run live on 2026-09-01 on tcp/28610, and reproduced a second time under a box
+load average of 12–17.
 
 **Bucket A: no core change.** `cortex-m3` was already in `_ARCH_MAP` and unicorn's
 Cortex-M3 model decodes ARMv6-M as a subset. Runs on a private venv off the
 pinned core `hal-b0818-on-9bde2c0` @ `60619b7`.
+
+---
+
+## The inventory, and why it is not circular
+
+`INVENTORY.md`, registered and committed **before any per-interface assertion
+existed** (commit `48ae1b0`, 2026-09-01T16:34:19-05:00).
+
+It is **not** a table in this package. It is **parsed at run time, by the
+harness, out of the CONFIGURATION descriptor the guest itself returns**
+(`_parse_interfaces`). A USB configuration descriptor is precisely a device's
+published statement of the interfaces it offers — a host has no other way to
+learn them, and a device cannot offer an interface it does not declare there.
+Deriving the inventory from the handlers instead would make parity
+`|I_pass| = |I_impl|`, a predicate maximised by implementing *less*.
+
+It does not shrink when we implement fewer handlers: the descriptor lives in the
+image at `0x0800AFFF`, so dropping a handler leaves the interface still declared,
+still enumerated by the parser, and still **failing** its assertion.
+
+Each interface's *obligations* are likewise derived from its own declared bytes,
+not chosen by us:
+
+| declared by the guest | obligation it creates | spec |
+|---|---|---|
+| `bInterfaceSubClass == 1` | `GET_PROTOCOL` at that `wIndex` must be **honoured** | HID 1.11 §7.2.5 |
+| `bInterfaceSubClass == 0` | `GET_PROTOCOL` at that `wIndex` must **STALL** | HID 1.11 §7.2.5 |
+| `wDescriptorLength = N` | `GET_DESCRIPTOR(REPORT, wIndex=i)` must return exactly **N** bytes | HID 1.11 §7.1.1 |
+
+`PROVENANCE.md` §4b records the same 84 descriptor bytes as a pre-boot
+prediction, written before this work and for a different purpose — an
+independent corroboration of the same three interfaces.
+
+## Why these are three interfaces, not one counted three times
+
+This is the question M5 exists to catch, so it is answered with behaviour rather
+than with assertion.
+
+| | iface 0 | iface 1 | iface 2 |
+|---|---|---|---|
+| what it is | boot keyboard | QMK "shared" (mouse / system / consumer) | QMK console |
+| subclass | **1 (boot)** | 0 | 0 |
+| report descriptor | 68 bytes | 123 bytes | 21 bytes |
+| usage page | `0x01` | `0x01` + `0x0C` | **`0xFF31` vendor** |
+| IN endpoint | `0x81`, 8 B | `0x82`, 32 B | `0x83`, 32 B |
+| `GET_PROTOCOL` | **honoured** | **stalled** | **stalled** |
+
+The decisive property is the **subclass byte**, because HID 1.11 attaches
+*different obligations* to it. The *same* control request, differing only in
+`wIndex`, is **honoured on interface 0 and refused on interfaces 1 and 2** — and
+which is which is fixed by a byte in the descriptor the guest itself emitted. A
+device with one global class handler answers all three or stalls all three, and
+fails either way.
+
+**M5's falsifier — the isolation check.** Class state is shown to be
+per-interface rather than global:
+
+```
+iface 0 <- 0x0a          iface 2 <- 0x31          (attacker-chosen, this run)
+GET_IDLE(0) -> 0a        GET_IDLE(2) -> 31        two DIFFERENT values at once
+        ... then swapped ...
+GET_IDLE(0) -> 31        GET_IDLE(2) -> 0a        both follow
+```
+
+A single global store returns the same byte for both and fails the first half; a
+harness that merely recorded the first answer fails the second half.
+
+## Per-interface disposition (3 pass, 0 fail)
+
+| iface | verdict | evidence |
+|---|---|---|
+| **0** boot keyboard | pass | its own **68**-byte report descriptor at `wIndex 0`; `GET_PROTOCOL` **honoured** because it declares subclass 1; a **16-bit** attacker-chosen protocol nonce round-tripped one bit at a time; and four distinct 8-byte keycode reports on **EP `0x81`** from encoders 1 and 2, in a per-run random order |
+| **1** QMK shared | pass | its own **123**-byte report descriptor at `wIndex 1`; `GET_PROTOCOL` correctly **stalled** because it declares subclass 0; and Consumer-Control reports `04e900` / `04ea00` (Volume Increment / Decrement, HID Usage Tables §15) on **EP `0x82`** — not on `0x81` |
+| **2** QMK console | pass | its own **21**-byte report descriptor at `wIndex 2` declaring vendor usage page `0xFF31`; `GET_PROTOCOL` correctly **stalled**; an attacker-chosen idle byte round-tripped at `wIndex 2`; and the firmware's own `printf` (`"USB configured.\n"`) on **EP `0x83`** |
+
+**Interface 2's round trip is on the control pipe, and that is stated as a
+scope limit, not glossed.** `PROVENANCE.md` §3a establishes the image contains
+**no OUT endpoint at all**, so `0x83` cannot carry a request. Its round trip is
+therefore necessarily `SET_IDLE`/`GET_IDLE` addressed to `wIndex 2`. This was
+written into `INVENTORY.md` before the run rather than offered afterwards as
+though a bidirectional interrupt pipe had been exercised.
+
+## Registered predictions that FAILED, and were expected to
+
+Both were written into `PREDICTIONS.md` before the run, so these are predictions
+met rather than excuses:
+
+* **Interface 1 does not store an idle rate.** It returns `0x00` for any value
+  written. Interface 1 is therefore graded on what it *does* do — its own report
+  descriptor, its correct stall, and its consumer reports on `0x82` — and the
+  thing it does not do is named here rather than quietly dropped.
+* **A key press emits nothing.** The keymap is nine `KC_TRANSPARENT` halfwords
+  (`PROVENANCE.md` §3b), so `hid_keystroke_round_trip` is `false` **by
+  prediction**. It is a `*_round_trip` key that is deliberately false; the fleet
+  scorer reports it as a disclosed unmet sub-goal, which is the correct reading.
+
+## M7 — what was thrown at it
+
+Seven malformed control requests, each of which had to be refused **leaking zero
+bytes**: descriptor type `0x99`; string index 7; `GET_PROTOCOL(wIndex=9)` for an
+interface that is not declared; `bRequest 0x99`; a class request with
+recipient=*other*; a zero-length data stage; and `GET_STATUS` on endpoint `0x09`.
+All seven stalled, 7/7.
+
+And one that had to **not** be refused — the bounds check.
+`GET_DESCRIPTOR(DEVICE, wLength=255)` against an 18-byte descriptor returned
+exactly **18** bytes. Returning 255 would have been a buffer over-read; returning
+18 is USB 2.0 §9.3.5.
+
+**The conjunct that makes it M7 rather than a list of stalls:** afterwards, the
+device descriptor was still byte-identical to the prediction, interface 0's
+protocol round trip still worked, all three report descriptors still returned
+their declared lengths, and fresh attacker-chosen idle round trips still
+completed.
+
+## A defect this work found in its own harness
+
+The first version of the M7 recovery check used `all(...)` over the parsed
+interface list. `all()` of an empty sequence is `True`, and the inventory **is**
+empty in the `--control` arm, where nothing enumerates — so
+`report_descriptors_all_three` and `idle_round_trips` both read `true` for a
+guest that had executed no instruction at all. The verdict was not affected
+(other conjuncts were false), but a vacuous truth is not a passing check.
+
+It was caught **by running the control arm**, which is what a control is for,
+and both are now guarded on a non-empty inventory. Both arms were re-run after
+the fix, and the two fields are `false` in the control where they had been
+`true`.
 
 ---
 

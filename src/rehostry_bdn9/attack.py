@@ -301,6 +301,41 @@ def _preflight(port: int, settle: float = 90.0) -> Tuple[bool, str]:
         time.sleep(2.0)
 
 
+def _parse_interfaces(cfg: bytes) -> List[Dict[str, Any]]:
+    """Enumerate the interfaces the guest's OWN CONFIGURATION descriptor declares.
+
+    This is the registered inventory (`INVENTORY.md`).  It is walked out of the
+    bytes the device returned, not read from a table in this package: a USB
+    configuration descriptor is exactly a device's published statement of the
+    interfaces it offers, and it cannot shrink because we implemented fewer
+    handlers.  Drop a handler and the interface is still declared here, still
+    enumerated, and still fails its assertion.
+
+    Each interface's *obligations* are derived from its own declared bytes --
+    `bInterfaceSubClass` decides whether GET_PROTOCOL must be honoured or
+    stalled, and the HID descriptor's `wDescriptorLength` decides how many
+    report-descriptor bytes it must return.
+    """
+    out: List[Dict[str, Any]] = []
+    cur: Optional[Dict[str, Any]] = None
+    i = 0
+    while i + 1 < len(cfg):
+        blen, btype = cfg[i], cfg[i + 1]
+        if blen == 0:
+            break
+        if btype == 0x04 and i + 8 <= len(cfg):            # INTERFACE
+            cur = {"num": cfg[i + 2], "cls": cfg[i + 5], "sub": cfg[i + 6],
+                   "proto": cfg[i + 7], "eps": [], "report_len": None}
+            out.append(cur)
+        elif btype == 0x05 and cur is not None and i + 6 <= len(cfg):  # ENDPOINT
+            cur["eps"].append((cfg[i + 2],
+                               int.from_bytes(cfg[i + 4:i + 6], "little")))
+        elif btype == 0x21 and cur is not None and i + 9 <= len(cfg):  # HID
+            cur["report_len"] = int.from_bytes(cfg[i + 7:i + 9], "little")
+        i += blen
+    return out
+
+
 class _Bridge:
     """Line client for the modelled USB host's control bridge."""
 
@@ -429,6 +464,20 @@ def run_attack(on_stage=None, log_dir: Optional[str] = None,
         "hid_keystroke_round_trip": False,
         "hid_encoder_report_round_trip": False,
         "raw_hid_via_interface_present": False,
+        # Per-interface verdicts over the registered inventory.  Seeded false,
+        # not left absent: the --control arm must be able to show an explicit
+        # negative for every claim, and a missing key reads as None, which is
+        # not evidence of anything.
+        "iface0_boot_keyboard_round_trip": False,
+        "iface1_shared_hid_round_trip": False,
+        "iface2_console_hid_round_trip": False,
+        "isolation_m5": False,
+        "stateful_m6": False,
+        "adversarial_m7": False,
+        "interface_parity": "0/0",
+        "inventory": [],
+        "inventory_size": 0,
+        "per_interface": {},
         "checks": {},
         "log": log_path,
     }
@@ -665,6 +714,230 @@ def run_attack(on_stage=None, log_dir: Optional[str] = None,
             stage("  " + p, expected=e, observed=o,
                   match="MATCH" if e == o else "MISMATCH")
 
+        # ==================================================================
+        # 9b. The registered inventory (INVENTORY.md) and its predictions
+        # (PREDICTIONS.md), both committed 2026-09-01T16:34:19-05:00 --
+        # BEFORE this block existed.
+        #
+        # The inventory is PARSED OUT OF THE DESCRIPTOR THE GUEST RETURNED,
+        # not read from a table here, and each interface's obligations are
+        # DERIVED FROM ITS OWN DECLARED BYTES.  Change the image and both
+        # follow it.
+        # ==================================================================
+        ifaces = _parse_interfaces(bridge.responses.get("cfg", ("", b""))[1])
+        res["inventory"] = [
+            {"interface": f["num"], "subclass": f["sub"],
+             "report_descriptor_len": f.get("report_len"),
+             "endpoints": ["0x%02x" % e for e, _ in f["eps"]]}
+            for f in ifaces]
+        res["inventory_size"] = len(ifaces)
+        stage("inventory",
+              note="%d interface(s) parsed from the guest's own CONFIGURATION "
+                   "descriptor: %s"
+                   % (len(ifaces),
+                      "; ".join("iface %d subclass %d, %s-byte report desc, "
+                                "EP 0x%02x" % (f["num"], f["sub"],
+                                               f.get("report_len"),
+                                               f["eps"][0][0] if f["eps"] else 0)
+                                for f in ifaces)))
+
+        # --- 9b-i. each interface's OWN report descriptor, at its own wIndex
+        for f in ifaces:
+            bridge.send("REQ rdsc%d 0x81 6 0x2200 %d 255" % (f["num"], f["num"]))
+        # --- 9b-ii. the boot-subclass discrimination -----------------------
+        # HID 1.11 §7.2.5: GET_PROTOCOL is defined ONLY for boot-subclass
+        # interfaces.  The obligation per interface is read off that
+        # interface's own subclass byte, so this is not a constant we chose.
+        for f in ifaces:
+            bridge.send("REQ prot%d 0xA1 3 0 %d 1" % (f["num"], f["num"]))
+        # --- 9b-iii. per-interface idle state, attacker-chosen -------------
+        idle_a = {f["num"]: 1 + secrets.randbelow(255) for f in ifaces}
+        for n, v in idle_a.items():
+            bridge.send("REQ sidle%d 0x21 10 0x%04x %d 0" % (n, v << 8, n))
+        for n in idle_a:
+            bridge.send("REQ gidle%d 0xA1 2 0 %d 1" % (n, n))
+        tags = (["rdsc%d" % f["num"] for f in ifaces]
+                + ["prot%d" % f["num"] for f in ifaces]
+                + ["sidle%d" % n for n in idle_a]
+                + ["gidle%d" % n for n in idle_a])
+        bridge.wait_for(tags, 40 if control else 180)
+
+        per_iface: Dict[str, Any] = {}
+        iface_pass: Dict[int, bool] = {}
+        for f in ifaces:
+            n = f["num"]
+            r_st, r_pl = bridge.responses.get("rdsc%d" % n, ("missing", b""))
+            # DERIVED: the length this interface's own HID descriptor declares.
+            rd_ok = (r_st == "ok" and len(r_pl) == f.get("report_len"))
+            p_st, p_pl = bridge.responses.get("prot%d" % n, ("missing", b""))
+            if f["sub"] == 1:
+                prot_ok = (p_st == "ok" and len(p_pl) == 1)
+                prot_why = "subclass 1 (boot) -> must be honoured"
+            else:
+                prot_ok = (p_st == "stall" and not p_pl)
+                prot_why = "subclass 0 -> must STALL"
+            i_st, i_pl = bridge.responses.get("gidle%d" % n, ("missing", b""))
+            idle_stored = (i_st == "ok" and len(i_pl) == 1
+                           and i_pl[0] == idle_a[n])
+            per_iface[str(n)] = {
+                "report_descriptor_bytes": len(r_pl),
+                "report_descriptor_declared": f.get("report_len"),
+                "report_descriptor_ok": rd_ok,
+                "get_protocol": p_st, "get_protocol_ok": prot_ok,
+                "get_protocol_rule": prot_why,
+                "idle_sent": "0x%02x" % idle_a[n],
+                "idle_readback": i_pl.hex() or None,
+                "idle_stored": idle_stored,
+            }
+            iface_pass[n] = bool(rd_ok and prot_ok)
+            stage("  iface %d" % n,
+                  report_desc="%d/%s bytes %s" % (len(r_pl), f.get("report_len"),
+                                                  "OK" if rd_ok else "MISMATCH"),
+                  get_protocol="%s (%s) %s" % (p_st, prot_why,
+                                               "OK" if prot_ok else "WRONG"),
+                  idle="sent 0x%02x readback %s" % (idle_a[n],
+                                                    i_pl.hex() or "(none)"))
+
+        # Endpoint evidence, from the reports already collected this run:
+        # interface 0's keycodes arrived on 0x81 and interface 1's consumer
+        # reports on 0x82, in a host-chosen order.  Interface 2's round trip is
+        # its control-pipe idle state (INVENTORY.md: it has no OUT endpoint).
+        ep_seen = {1: any(o.startswith("ep1:") for o in res.get("encoder_observed", [])),
+                   2: any(o.startswith("ep2:") for o in res.get("encoder_observed", []))}
+        per_iface.setdefault("0", {})["endpoint_reports"] = ep_seen.get(1, False)
+        per_iface.setdefault("1", {})["endpoint_reports"] = ep_seen.get(2, False)
+        per_iface.setdefault("2", {})["console_printf"] = None  # filled at 10b
+
+        # --- 9b-iv. M5 isolation: the state is PER-interface, not global ----
+        # Two interfaces, two DIFFERENT attacker-chosen bytes, both read back;
+        # then swapped and re-read, so a harness that recorded the first answer
+        # fails too.  A single global store returns the same byte for both.
+        pair = [f["num"] for f in ifaces if f["num"] in (0, 2)]
+        iso_ok = False
+        if len(pair) == 2:
+            x, y = pair
+            a, b_ = idle_a[x], idle_a[y]
+            while b_ == a:
+                b_ = 1 + secrets.randbelow(255)
+            bridge.send("REQ swx 0x21 10 0x%04x %d 0" % (b_ << 8, x))
+            bridge.send("REQ swy 0x21 10 0x%04x %d 0" % (a << 8, y))
+            bridge.send("REQ gwx 0xA1 2 0 %d 1" % x)
+            bridge.send("REQ gwy 0xA1 2 0 %d 1" % y)
+            bridge.wait_for(["swx", "swy", "gwx", "gwy"], 30 if control else 120)
+            gx = bridge.responses.get("gwx", ("", b""))[1]
+            gy = bridge.responses.get("gwy", ("", b""))[1]
+            before_differed = (per_iface[str(x)]["idle_stored"]
+                               and per_iface[str(y)]["idle_stored"]
+                               and idle_a[x] != idle_a[y])
+            after_ok = (len(gx) == 1 and gx[0] == b_
+                        and len(gy) == 1 and gy[0] == a)
+            iso_ok = bool(before_differed and after_ok)
+            res["m5_isolation"] = {
+                "interfaces": [x, y],
+                "before": {str(x): "0x%02x" % idle_a[x],
+                           str(y): "0x%02x" % idle_a[y]},
+                "after_swap_expected": {str(x): "0x%02x" % b_,
+                                        str(y): "0x%02x" % a},
+                "after_swap_readback": {str(x): gx.hex() or None,
+                                        str(y): gy.hex() or None},
+                "distinct_before": before_differed, "correct_after": after_ok}
+            stage("m5-isolation" + (" [ok]" if iso_ok else " [FAIL]"),
+                  note="iface %d and %d hold DIFFERENT attacker-chosen idle "
+                       "bytes (0x%02x / 0x%02x), and both follow a swap "
+                       "(-> %s / %s); a global store cannot"
+                       % (x, y, idle_a[x], idle_a[y], gx.hex() or "-",
+                          gy.hex() or "-"))
+        checks["interface_state_is_per_interface_not_global"] = iso_ok
+
+        # --- 9b-v. M7: adversarial control traffic --------------------------
+        adv = [
+            ("adv_type", "REQ adv_type 0x80 6 0x9900 0 16", "descriptor type 0x99"),
+            ("adv_str", "REQ adv_str 0x80 6 0x0307 0x0409 64", "string index 7"),
+            ("adv_iface", "REQ adv_iface 0xA1 3 0 9 1", "GET_PROTOCOL iface 9"),
+            ("adv_req", "REQ adv_req 0xA1 0x99 0 0 1", "bRequest 0x99"),
+            ("adv_recip", "REQ adv_recip 0xA3 3 0 0 1", "recipient=other"),
+            ("adv_zlen", "REQ adv_zlen 0x80 6 0x0100 0 0", "wLength 0"),
+            ("adv_ep9", "REQ adv_ep9 0x82 0 0 0x09 2", "GET_STATUS on ep 0x09"),
+        ]
+        for tag, line, _ in adv:
+            bridge.send(line)
+        # The bounds check: wLength far larger than the descriptor must return
+        # the DESCRIPTOR's length, not wLength.  Answering 255 here would be a
+        # buffer over-read, so this one must NOT stall.
+        bridge.send("REQ adv_over 0x80 6 0x0100 0 255")
+        bridge.wait_for([t for t, _, _ in adv] + ["adv_over"],
+                        40 if control else 180)
+        refused = {}
+        for tag, _, what in adv:
+            st, pl = bridge.responses.get(tag, ("missing", b""))
+            refused[what] = (st == "stall" and not pl)
+        over_st, over_pl = bridge.responses.get("adv_over", ("missing", b""))
+        bounded = (over_st == "ok" and len(over_pl) == 18
+                   and over_pl.hex() == PREDICTED["dev"])
+        res["m7_refusals"] = refused
+        res["m7_bounded_read"] = {
+            "requested": 255, "returned": len(over_pl), "ok": bounded}
+        stage("m7-adversarial"
+              + (" [ok]" if all(refused.values()) and bounded else " [FAIL]"),
+              note="%d/%d malformed requests stalled with 0 bytes; "
+                   "GET_DESCRIPTOR(DEVICE, wLength=255) returned %d bytes "
+                   "(the descriptor's true length is 18, not 255)"
+                   % (sum(refused.values()), len(refused), len(over_pl)))
+        for what, ok in refused.items():
+            stage("    " + what, refused="yes" if ok else "NO -- ANSWERED")
+
+        # --- 9b-vi. M7's real conjunct: known-good on ALL THREE afterwards ---
+        rec_idle = {f["num"]: 1 + secrets.randbelow(255) for f in ifaces}
+        bridge.send("REQ rec_dev 0x80 6 0x0100 0 18")
+        bridge.send("REQ rec_prot 0xA1 3 0 0 1")
+        for n, v in rec_idle.items():
+            bridge.send("REQ rsi%d 0x21 10 0x%04x %d 0" % (n, v << 8, n))
+        for n in rec_idle:
+            bridge.send("REQ rgi%d 0xA1 2 0 %d 1" % (n, n))
+        for f in ifaces:
+            bridge.send("REQ rrd%d 0x81 6 0x2200 %d 255" % (f["num"], f["num"]))
+        bridge.wait_for(["rec_dev", "rec_prot"]
+                        + ["rsi%d" % n for n in rec_idle]
+                        + ["rgi%d" % n for n in rec_idle]
+                        + ["rrd%d" % f["num"] for f in ifaces],
+                        40 if control else 180)
+        rec_dev_ok = (bridge.responses.get("rec_dev", ("", b""))[1].hex()
+                      == PREDICTED["dev"])
+        rec_prot_ok = bridge.responses.get("rec_prot", ("", b""))[0] == "ok"
+        # `all()` over an empty sequence is True, and the inventory IS empty in
+        # the --control arm, where nothing enumerates.  Without the emptiness
+        # guard these two read `true` for a guest that executed no instruction
+        # -- a vacuous truth is not a passing check.  Caught by the control arm
+        # itself, which is what a control is for.
+        rec_rd_ok = bool(ifaces) and all(
+            bridge.responses.get("rrd%d" % f["num"], ("", b""))[0] == "ok"
+            and len(bridge.responses["rrd%d" % f["num"]][1]) == f.get("report_len")
+            for f in ifaces)
+        # Only the interfaces that stored an idle rate before are required to
+        # store one now -- PREDICTIONS.md registers interface 1 as not storing.
+        storing = [n for n in rec_idle
+                   if per_iface.get(str(n), {}).get("idle_stored")]
+        rec_idle_ok = bool(storing) and all(
+            (bridge.responses.get("rgi%d" % n, ("", b""))[1] or b"\xff")[0]
+            == rec_idle[n] for n in storing)
+        recovered = bool(rec_dev_ok and rec_prot_ok and rec_rd_ok and rec_idle_ok)
+        checks["known_good_traffic_survives_malformed_input"] = recovered
+        res["m7_recovery"] = {
+            "device_descriptor_still_identical": rec_dev_ok,
+            "protocol_round_trip_iface0": rec_prot_ok,
+            "report_descriptors_all_three": rec_rd_ok,
+            "idle_round_trips": rec_idle_ok}
+        stage("m7-recovery" + (" [ok]" if recovered else " [FAIL]"),
+              note="after every malformed request: device descriptor identical="
+                   "%s, iface0 protocol=%s, all three report descriptors=%s, "
+                   "fresh idle round trips=%s"
+                   % (rec_dev_ok, rec_prot_ok, rec_rd_ok, rec_idle_ok))
+
+        res["per_interface"] = per_iface
+        res["_iface_pass"] = iface_pass
+        res["_iso_ok"] = iso_ok
+        res["_adv_ok"] = bool(refused and all(refused.values()) and bounded)
+
         # --- 10. did the firmware panic? -----------------------------------
         text = _read_log_incremental(log_path)
         panicked = ("reached its own chSysHalt()" in text
@@ -724,8 +997,72 @@ def run_attack(on_stage=None, log_dir: Optional[str] = None,
         and checks.get("protocol_nonce_round_tripped")
         and checks.get("encoder_rotation_emits_the_matching_hid_report"))
     res["landed"] = bool(checks) and all(checks.values()) and res["usb_round_trip"]
-    res["milestone"] = ("M4" if res["landed"]
-                        else "M3" if res.get("booted") else "M0")
+
+    # ---- the breadth rungs, over the registered inventory -----------------
+    iface_pass = res.pop("_iface_pass", {})
+    iso_ok = res.pop("_iso_ok", False)
+    adv_ok = res.pop("_adv_ok", False)
+    pi = res.get("per_interface", {})
+
+    def _iface(n: int, extra: bool) -> bool:
+        """Interface n passes when its OWN declared obligations are met."""
+        return bool(iface_pass.get(n) and extra)
+
+    # iface 0: its own 68-byte report descriptor, GET_PROTOCOL honoured because
+    # it declares subclass 1, the 16-bit protocol nonce, and keycodes on 0x81.
+    res["iface0_boot_keyboard_round_trip"] = _iface(
+        0, checks.get("protocol_nonce_round_tripped", False)
+        and pi.get("0", {}).get("endpoint_reports", False))
+    # iface 1: its own 123-byte report descriptor, GET_PROTOCOL correctly
+    # STALLED because it declares subclass 0, and consumer reports on 0x82.
+    res["iface1_shared_hid_round_trip"] = _iface(
+        1, pi.get("1", {}).get("endpoint_reports", False))
+    # iface 2: its own 21-byte report descriptor, GET_PROTOCOL correctly
+    # STALLED, and an attacker-chosen idle byte round-tripped at wIndex 2 --
+    # on the control pipe, because the image has no OUT endpoint at all.
+    res["iface2_console_hid_round_trip"] = _iface(
+        2, pi.get("2", {}).get("idle_stored", False))
+
+    passed = [n for n in sorted(iface_pass) if res.get(
+        {0: "iface0_boot_keyboard_round_trip",
+         1: "iface1_shared_hid_round_trip",
+         2: "iface2_console_hid_round_trip"}.get(n, ""), False)]
+    res["interfaces_passed"] = passed
+    res["interface_parity"] = "%d/%d" % (len(passed), res.get("inventory_size", 0))
+
+    # M5 wants two or more INDEPENDENT interfaces.  Independence is not assumed
+    # from them being listed separately: it is required to show up as behaviour
+    # that differs per interface -- GET_PROTOCOL honoured on the boot-subclass
+    # interface and stalled on the others, and class state that is per-interface
+    # rather than global.
+    res["isolation_m5"] = bool(len(passed) >= 2 and iso_ok)
+    # M6: the same GET_PROTOCOL at sixteen states, and the same GET_IDLE before
+    # and after a swap, each returning a different correct answer.
+    res["stateful_m6"] = bool(checks.get("protocol_nonce_round_tripped")
+                              and checks.get("idle_byte_round_tripped")
+                              and iso_ok)
+    # M7: seven refusals, a bounded read that does not over-read, and known-good
+    # traffic on all three interfaces afterwards.
+    res["adversarial_m7"] = bool(
+        adv_ok and checks.get("unknown_requests_are_stalled_not_answered")
+        and checks.get("known_good_traffic_survives_malformed_input"))
+
+    milestone = "M4" if res["landed"] else "M3" if res.get("booted") else "M0"
+    if milestone == "M4" and res["isolation_m5"]:
+        milestone = "M5"
+    if milestone == "M5" and res["stateful_m6"]:
+        milestone = "M6"
+    if milestone == "M6" and res["adversarial_m7"]:
+        milestone = "M7"
+    # M8 -- parity over the WHOLE inventory -- is claimed only when every
+    # interface the guest's own descriptor declares has passed.  The parity
+    # pair is reported either way so that 2/3 cannot be read as 3/3.
+    res["m8_claimed"] = bool(milestone == "M7"
+                             and res.get("inventory_size")
+                             and len(passed) == res["inventory_size"])
+    if res["m8_claimed"]:
+        milestone = "M8"
+    res["milestone"] = milestone
     return res
 
 
@@ -810,6 +1147,15 @@ def main() -> int:
                                           "hid_keystroke_round_trip",
                                           "hid_encoder_report_round_trip",
                                           "raw_hid_via_interface_present",
+                                          "iface0_boot_keyboard_round_trip",
+                                          "iface1_shared_hid_round_trip",
+                                          "iface2_console_hid_round_trip",
+                                          "isolation_m5", "stateful_m6",
+                                          "adversarial_m7", "m8_claimed",
+                                          "interface_parity", "inventory",
+                                          "interfaces_passed", "per_interface",
+                                          "m5_isolation", "m7_refusals",
+                                          "m7_bounded_read", "m7_recovery",
                                           "control")}))
     # Non-zero below M4. Compare the RUNG, not the string: the first run
     # to grade M5+ would otherwise exit 1 and be read as a failure.
