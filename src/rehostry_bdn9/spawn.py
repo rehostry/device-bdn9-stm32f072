@@ -96,7 +96,16 @@ def spawn_env(halucinator_src: Optional[str] = None,
     env.setdefault("HAL_IRQ_CHUNK", "20000")
     # ARMv6-M runs on unicorn's cortex-m3 model; say so explicitly rather than
     # relying on the config alone.
-    env.setdefault("HAL_CORTEXM_CPU_MODEL", "cortex-m3")
+    #
+    # The value must be a `UC_CPU_ARM_*` CONSTANT NAME. The backend resolves it
+    # with `getattr(arm_const, name) if name.startswith("UC_CPU_ARM_") else
+    # None`, so the lowercase part name "cortex-m3" that used to be here was
+    # REJECTED: the backend logged `unknown HAL_CORTEXM_CPU_MODEL='cortex-m3';
+    # using UC_CPU_ARM_CORTEX_M3` on every run and fell back. The fallback
+    # happens to be the core this device wants, so behaviour was correct by
+    # luck and the explicit statement did nothing -- the same "looks like it
+    # works and does nothing" trap as writing `cpu_model:` in the YAML.
+    env.setdefault("HAL_CORTEXM_CPU_MODEL", "UC_CPU_ARM_CORTEX_M3")
     if extra:
         env.update(extra)
     return env
