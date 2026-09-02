@@ -9,7 +9,8 @@ vendor simulator, no stub of the device's behaviour: the firmware executes
 instruction by instruction and everything this repository claims is a byte the
 firmware produced.
 
-**Milestone: M4** — a real USB round trip. See `STATUS.md` for the evidence and
+**Milestone: M8** — full interface parity, **3 / 3**, on top of a real USB round
+trip. Adversarially reviewed and upheld. See `STATUS.md` for the evidence and
 `PROVENANCE.md` for the prediction it was graded against, which is committed
 *ahead* of everything that can boot the firmware so its timestamp proves it
 came first.
