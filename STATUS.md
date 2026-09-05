@@ -1,4 +1,4 @@
-<!-- rehostry-census: milestone=M8 landed=true verdict=M4-OK verified=2026-09-01 method=live-run -->
+<!-- rehostry-census: milestone=M8 landed=true verdict=M4-OK verified=2026-09-05 method=live-run path=rehostry-bdn9-attack core=hal-b0818-on-9bde2c0@60619b7 note=parity-3of3-on-the-default-path-no-flags -->
 <!-- Copyright 2026 Christopher Wright; SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Status — device-bdn9-stm32f072
 
@@ -39,11 +39,185 @@ RESULT: {"booted": true, "landed": true, "milestone": "M8",
 ```
 
 Run live on 2026-09-01 on tcp/28610, and reproduced a second time under a box
-load average of 12–17.
+load average of 12–17. **Re-verified 2026-09-05** — see "Re-verification" below.
 
 **Bucket A: no core change.** `cortex-m3` was already in `_ARCH_MAP` and unicorn's
 Cortex-M3 model decodes ARMv6-M as a subset. Runs on a private venv off the
 pinned core `hal-b0818-on-9bde2c0` @ `60619b7`.
+
+---
+
+## THE ENVIRONMENT — read this before running anything
+
+A verifier stopped on this device on 2026-09-05 because the environment looked
+ambiguous, and it was right to stop (playbook **w29.1**: the wrong venv
+manufactures confident false demotions). Recording it here so nobody has to
+work it out again.
+
+| | |
+|---|---|
+| **venv** | `/Users/user/Development/rehostry/venvs-on-9bde2c0.noindex/bdn9-stm32f072` |
+| **core** | `/Users/user/Development/rehostry/hal-b0818-on-9bde2c0/src` @ `60619b7e` — the fleet's certified core pin |
+| **binary** | `venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/rehostry-bdn9-attack` (Python 3.12) |
+| **cwd** | anywhere; the run `cd`s itself |
+
+Both `halucinator` **and** `rehostry_bdn9` are *editable* installs in that venv,
+pointing at `hal-b0818-on-9bde2c0/src` and at this directory, so an edit here is
+picked up without reinstalling.
+
+**How that was established** — documentary and byte-level, not "it imported":
+
+1. This file has named `hal-b0818-on-9bde2c0` @ `60619b7` since the M8 commit
+   (`030d8e0`, 2026-09-01). `git -C hal-b0818-on-9bde2c0 log` puts HEAD at
+   `60619b7e`, so the pin still resolves to what was documented.
+2. The venv's `__editable__.halucinator-1.9.0.pth` contains exactly that path,
+   and at run time `halucinator.__file__` resolves inside it.
+3. `hal-b0818-on-9bde2c0` descends from `9bde2c0c`
+   (`git merge-base --is-ancestor` → yes), which is what the
+   `venvs-on-9bde2c0.noindex/` naming records.
+
+### Two environments that are NOT this one
+
+* **`venvs.noindex/bdn9-stm32f072`** carries a *vendored* (non-editable)
+  halucinator. It looks like the w29.1 trap, but it is not: all **225** `.py`
+  files hash identically to `hal-b0818-on-9bde2c0/src/halucinator`
+  (`49d75d82965423bb30b799e2f64f218a62e523e21265d70a266434340a30c274` over the
+  sorted per-file digests), and `backends/unicorn_backend.py` is 254,800 B in
+  both. It is a **frozen copy of the right core**, so it would run correctly —
+  but it will not pick up a core change, so prefer the editable venv above.
+* **The shared editable tree `halucinator/src`** is a *different* core:
+  `unicorn_backend.py` is **220,057 B** and HEAD is `158c31ab`, a sibling branch
+  off the same `9bde2c0c` base. This device has never been graded there and
+  makes no claim about it. Running it there is the w29.1 mistake.
+
+⚠ **The `.venv` in the README quick-start is not this environment.** That block
+is a recipe for a third party who has cloned the repository and wants to build
+their own venv from the public `@dev` branch; no such `.venv` exists in this
+working tree and none is expected to. The fleet environment is the table above.
+
+---
+
+## Re-verification — 2026-09-05
+
+Re-run today in the venv this file documents, on the **default path with no
+flags**, and scored by importing `scratch-census-guard-a48/census_score.py`
+(never forked). Box load average at launch **2.4–4.0** (`uptime`), i.e. not a
+loaded box.
+
+| arm | invocation | milestone | guard verdict |
+|---|---|---|---|
+| **live** | `python -m rehostry_bdn9.attack` | **M8**, `interface_parity 3/3` | `M4-OK` |
+| **control** (guest stalled, every halfword `0xE7FE`) | `… --control` | **M0**, `interface_parity 0/0` | `WALL-M0` |
+| **dead arm** (firmware moved aside) | `falserung/deadarm.sh` | *no RESULT line at all* | `no-RESULT` |
+
+**Live, today** — parity re-derived from the guest's own descriptor this run:
+
+```
+[stage] inventory: 3 interface(s) parsed from the guest's own CONFIGURATION descriptor:
+        iface 0 subclass 1, 68-byte report desc, EP 0x81;
+        iface 1 subclass 0, 123-byte report desc, EP 0x82;
+        iface 2 subclass 0, 21-byte report desc, EP 0x83
+[stage]   iface 0: report_desc=68/68 OK   get_protocol=ok    (subclass 1 -> honoured) OK
+[stage]   iface 1: report_desc=123/123 OK get_protocol=stall (subclass 0 -> STALL)    OK
+[stage]   iface 2: report_desc=21/21 OK   get_protocol=stall (subclass 0 -> STALL)    OK
+[stage] m5-isolation [ok]: iface 0 and 2 hold DIFFERENT attacker-chosen idle bytes
+        (0x8b / 0x7f), and both follow a swap (-> 7f / 8b)
+[stage] m7-adversarial [ok]: 7/7 stalled with 0 bytes; GET_DESCRIPTOR(DEVICE,
+        wLength=255) returned 18 bytes
+[stage] milestone: M8 (usb_round_trip=True)
+RESULT: {"booted": true, "landed": true, "milestone": "M8",
+         "interface_parity": "3/3", "interfaces_passed": [0,1,2], "m8_claimed": true, …}
+```
+
+**Control, today** — every firmware-side field false, and the parity term with it:
+
+```
+[stage] inventory: 0 interface(s) parsed from the guest's own CONFIGURATION descriptor:
+[stage] milestone: M0 (usb_round_trip=False)
+RESULT: {"control": true, "booted": false, "landed": false, "milestone": "M0",
+         "interface_parity": "0/0", "inventory": [], "interfaces_passed": [],
+         "m8_claimed": false, …}
+```
+
+**The empty-inventory vacuity check, run rather than argued.** `all([])` is
+`True`, and this device's inventory really is empty in the control arm — so the
+M8 gate was built with an explicit emptiness guard
+(`bool(res.get("inventory_size")) and len(passed) == inventory_size`), as were
+`report_descriptors_all_three` and `idle_round_trips`. Today's control arm
+confirms all three hold: `m8_claimed: false`, `interface_parity: "0/0"`,
+`m7_recovery` all false. **The gate cannot emit M8 for a dead guest.** The rung
+floor is `M0`, not a constant — playbook **w31**'s defect is absent here.
+
+**The dead arm (playbook w36).** With `bdn9.bin` moved aside, the attack raises
+`FileNotFoundError` from `hashlib.sha256(open(paths.firmware_bin()))` **before
+the emulator is ever spawned**, and prints no `RESULT:` line. The guard scores
+that `no-RESULT` and counts nothing. So the `device-marlin` failure mode —
+HALucinator carrying on with a zero-filled flash and a `booted: true` on a
+corpse — cannot occur here: this device hashes its image before it boots it.
+`deadarm.sh` restored the image and re-verified it byte-for-byte:
+`RESTORE-OK sha256=4928398d…6d6da size=131072`.
+
+*Improvement available, not a defect in the verdict:* that path is a bare
+traceback rather than a named harness fault. `device-vesc-bldc-f405` emits
+`milestone: "ERROR"` for "cannot measure" (playbook w29.2) and this device
+should do the same. Nothing is currently mis-scored, because no RESULT line is
+printed at all.
+
+*Cosmetic reporting bug found today, verdict unaffected:* in the control arm the
+M7 stage prints `refused=NO -- ANSWERED` for requests that in fact drew **no
+response at all**. The predicate is `refused = (status == "stall" and not
+payload)`, so `missing` correctly scores `False` — the safe direction — but the
+label conflates "missing" with "answered" and should say which it was.
+
+### What the parity number is sensitive to
+
+Stated so a reader applying a stricter rule can re-derive their own number
+rather than take 3/3 on trust.
+
+The **denominator** is not ours to move: it is `bNumInterfaces = 3` in the
+84-byte CONFIGURATION descriptor, which lives in the vendor image at `0xAFFF`,
+was committed as a pre-boot static prediction in `PROVENANCE.md` §3a/§4b
+(`674dcf2`, 8 min 15 s before the first bootable artifact existed), and is
+re-parsed each run out of the bytes the guest returns. It is pinned from three
+directions at once, and a truncated descriptor cannot shrink it silently —
+`descriptors_match_the_pre_boot_prediction` gates `landed`, so the 84 bytes must
+come back whole or the run scores M3 and M8 is unreachable. That failure was
+real once (wall 1 below: 84 bytes arrived as 20).
+
+The **numerator** rests on obligations that are uniform for two of the three
+terms and per-interface for the third:
+
+* uniform, and derived from each interface's own declared bytes — its report
+  descriptor's declared length, and whether `GET_PROTOCOL` must be honoured
+  (subclass 1) or stalled (subclass 0);
+* per-interface — iface 0 adds the 16-bit protocol nonce and keycodes on
+  `0x81`, iface 1 adds consumer reports on `0x82`, iface 2 adds an
+  attacker-chosen idle byte at `wIndex 2`.
+
+**Neither per-interface term applied uniformly would give 3/3**: grading all
+three on idle storage fails iface 1 (a registered negative — it stores nothing),
+and grading all three on interrupt-endpoint reports fails iface 2 (its `0x83`
+carries only the firmware's own static `printf`, which is deliberately ungraded
+because it would survive a replay). Both substitutions were **registered in
+`PREDICTIONS.md` before the assertion code existed** — commit `48ae1b0`
+(INVENTORY.md + PREDICTIONS.md, *no code*) at 16:34:19, and the assertions in
+`030d8e0` at 16:49:44 — with firmware-derived reasons, so they are declared
+scope, not predicates chosen after seeing which ones passed.
+
+**The open ruling, flagged rather than resolved here.**
+`device-planck-rev6-stm32f303` is the same board class — QMK/ChibiOS, three HID
+interfaces (boot keyboard / NKRO / console), three IN endpoints — and is graded
+**M7 with M5/M8 undefined**, on the ground that three descriptor sets addressed
+by `wIndex` on one EP0 dispatcher are one interface. The discriminator this
+device relies on is that its ifaces 0 and 1 are graded on **traffic on their own
+interrupt-IN endpoints**, in two different report formats, driven by physical
+GPIO stimulus — which planck never graded — and that iface 2 holds **mutable
+attacker-chosen class state, simultaneously distinct from iface 0's and
+correctly following a swap** (§1a evidence form 1, the strongest listed), where
+planck's console exchange was a static descriptor read. If the fleet instead
+rules that iface 2's graded round trip being an EP0 `wIndex`-addressed transfer
+collapses it into the control interface, **this device is 2/3 → M7**, and only
+that one rung moves; M4–M7 stand on their own evidence either way.
 
 ---
 
@@ -590,10 +764,28 @@ this device's own row in `DEVICE-QUEUE.md`.
 
 ## Reproducing
 
+In the venv recorded under "THE ENVIRONMENT" above — **not** in the shared
+editable core tree, and not in a `.venv` built from the README quick-start:
+
 ```bash
+V=/Users/user/Development/rehostry/venvs-on-9bde2c0.noindex/bdn9-stm32f072
+$V/bin/python -c 'import halucinator,os; print(os.path.dirname(halucinator.__file__))'
+#   -> /Users/user/Development/rehostry/hal-b0818-on-9bde2c0/src/halucinator
+#      (unicorn_backend.py is 254,800 B; 220,057 B means the WRONG core)
+
 python3 tools/extract_firmware.py --src /path/to/keebio_bdn9_rev2_w3adefault.bin
-rehostry-bdn9-attack                    # the graded attack
-rehostry-bdn9-attack --control          # the guest-stall falsification control
-rehostry-bdn9-attack --decoy-selftest   # the impostor refusal
-python -m pytest tests/                 # structural checks, no emulator needed
+$V/bin/rehostry-bdn9-attack                   # the graded attack -> M8, no flags
+$V/bin/rehostry-bdn9-attack --control         # the guest-stall control  -> M0
+$V/bin/rehostry-bdn9-attack --decoy-selftest  # the impostor refusal
+$V/bin/python -m pytest tests/                # structural checks, no emulator
+
+# the firmware-absent arm (playbook w36); restores by trap and re-checks sha256
+zsh ../scratch-batch-s0905/falserung/deadarm.sh device-bdn9-stm32f072 \
+    $V/bin/python rehostry_bdn9.attack \
+    device-bdn9-stm32f072/src/rehostry_bdn9/configs/bdn9.bin 600
 ```
+
+**M8 is on the default path** — `rehostry-bdn9-attack` with no flags prints
+`milestone: M8`, which is why the census header carries
+`path=rehostry-bdn9-attack`. There is no `--ladder`/`--parity`/`--m8` flag to
+find; playbook **w35**'s "the rung lives behind a flag" case does not apply.
