@@ -19,6 +19,12 @@ came first.
 
 ## Quick start
 
+This builds a fresh environment from the public core, for a reader who has just
+cloned the repository. **It is not the environment this device was graded in** —
+that one is recorded in `STATUS.md` under "THE ENVIRONMENT", and the `.venv`
+below is not expected to exist in a rehostry working tree. Use `STATUS.md` if
+you are reproducing the milestone; use this if you are starting from scratch.
+
 ```bash
 python3.12 -m venv .venv && . .venv/bin/activate
 pip install "halucinator[unicorn] @ git+https://github.com/rehostry/halucinator.git@dev"
