@@ -99,7 +99,7 @@ ChibiOS' tickless time base) read **IPSR 31, depth 1** in every sample, and a ru
   `os._exit`. The harness is this repo at `b737040`, committed before every arm. Arms `final` and `final2` each ran
   57 inputs (44 entries, 13 controls); `mute-enum` 16; `gate-wrong` 5; `no-gate` 5.
 * **Ports and slots.** Two at a time on slots 0–1. Slot `k` uses ports `39990+3k` to `+2` (bridge, zmq rx, zmq tx),
-  asserted inside `39990..40009`. Child PIDs are in `child-pids-*.txt`.
+  asserted inside `39990..40009`. Each result record carries its child's pid and ports.
 * **Bridge identity.** The bridge greets `HELLO device=rehostry-bdn9 pid=<our child> nonce=<per-boot secret>`, and
   the hook log's `hello` carries the same pid. This held in all 140 boots. The bridge parses fields with
   `int(x, 0)`, so the harness sends them `0x`-prefixed.
@@ -124,7 +124,7 @@ ChibiOS' tickless time base) read **IPSR 31, depth 1** in every sample, and a ru
   No fetch.
 * **Load.** 10.3 → 72.8 (other lanes running). No verdict depends on timing.
 
-### Controls (`evidence-s1011-laneAQ/summary-final.json`, `summary-final2.json`)
+### Controls (`evidence-s1011-laneAQ/summary-final.json`, `summary-final2.json`; per-input records in `results-final.jsonl`)
 
 * **0 hook records during boot** in all 114 entry-first graded boots (and the 10 `gate-wrong`/`no-gate` boots).
 * **Next-entry identity:** each entry's hits were scored against the **next** entry's identity: **0** true under
@@ -185,11 +185,14 @@ venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/python -m rehostry_bdn9.fuzz_entry -
 * **Ports.** Ports come from `FUZZ_REACH_PORT_LOW`/`_HIGH`; the defaults are this lane's block (`39990..40009`).
 
 Evidence in `evidence-s1011-laneAQ/`:
-* `results-{final,final2,mute-enum,gate-wrong,no-gate}.json`: per input, the hook records (setup bytes, `r0`–`r3`,
-  OUT bytes, IPSR, depth, guest address), the gate record, the replies as status/length/sha256, liveness, last PC
-  samples, image and backend hashes, and pid;
-* `summary-*.json` and `arm-*.txt`;
-* `child-pids-*.txt`;
+* `results-{final,mute-enum,gate-wrong,no-gate}.jsonl`, one JSON record per input: the hook records (setup bytes,
+  `r0`–`r3`, OUT bytes, IPSR, depth, guest address), the gate record, the replies as status/length/sha256,
+  liveness, last PC samples, image and backend hashes, pid and ports;
+* `summary-{final,final2,mute-enum,gate-wrong,no-gate}.json`: the arm's counts, plus its start/end environment
+  record (load, venv, core, `unicorn_backend.py` sha256, row HEAD, image sha256, `--check`), with paths relative
+  to the fleet root;
+* **`final2` is a repeat of `final`; its per-input results file is not committed.** `summary-final2.json` keeps
+  its counts and `repeat_diffs` (empty) against `final`;
 * `header-check.txt`.
 
 **Not measured:**
@@ -304,8 +307,8 @@ work it out again.
 
 | | |
 |---|---|
-| **venv** | `/Users/user/Development/rehostry/venvs-on-9bde2c0.noindex/bdn9-stm32f072` |
-| **core** | `/Users/user/Development/rehostry/hal-b0818-on-9bde2c0/src` @ `60619b7e` — the fleet's certified core pin |
+| **venv** | `venvs-on-9bde2c0.noindex/bdn9-stm32f072` (relative to the fleet root) |
+| **core** | `hal-b0818-on-9bde2c0/src` @ `60619b7e` — the fleet's certified core pin |
 | **binary** | `venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/rehostry-bdn9-attack` (Python 3.12) |
 | **cwd** | anywhere; the run `cd`s itself |
 
@@ -1016,9 +1019,9 @@ In the venv recorded under "THE ENVIRONMENT" above — **not** in the shared
 editable core tree, and not in a `.venv` built from the README quick-start:
 
 ```bash
-V=/Users/user/Development/rehostry/venvs-on-9bde2c0.noindex/bdn9-stm32f072
+V=venvs-on-9bde2c0.noindex/bdn9-stm32f072   # relative to the fleet root
 $V/bin/python -c 'import halucinator,os; print(os.path.dirname(halucinator.__file__))'
-#   -> /Users/user/Development/rehostry/hal-b0818-on-9bde2c0/src/halucinator
+#   -> <fleet root>/hal-b0818-on-9bde2c0/src/halucinator
 #      (unicorn_backend.py is 254,800 B; 220,057 B means the WRONG core)
 
 python3 tools/extract_firmware.py --src /path/to/keebio_bdn9_rev2_w3adefault.bin
