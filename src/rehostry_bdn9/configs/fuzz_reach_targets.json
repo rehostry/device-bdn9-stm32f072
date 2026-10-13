@@ -1,0 +1,1685 @@
+{
+ "row": "device-bdn9-stm32f072",
+ "lane": "s1011-laneAQ",
+ "bin": "bdn9.bin",
+ "bin_sha256": "4928398d043e615ae3ea213c73da7b6e6d044215ee9d6d70a51e31fb2c56d6da",
+ "inventory_source": "census iface0/iface1/iface2 (INVENTORY.md: the CONFIGURATION descriptor the guest returns), each expanded into the requests the image's own dispatch parses for that wIndex; plus device-level standard requests (extras)",
+ "census": {
+  "iface0": "HID boot keyboard (wIndex 0)",
+  "iface1": "HID QMK shared mouse/system/consumer (wIndex 1)",
+  "iface2": "HID QMK console 0xFF31 (control pipe only, no OUT ep)"
+ },
+ "located": {
+  "gud": "0x8007444",
+  "gdcb": "0x800705c",
+  "usbcfg": "0x800af94",
+  "hook": "0x8006f60",
+  "ep0site": "0x8008654",
+  "setup_off": "0x74",
+  "gud_caller": "0x8007080",
+  "reset": "0x8000190",
+  "case_helpers": [
+   "0x80001dc",
+   "0x80001f0",
+   "0x8000204",
+   "0x8000218"
+  ]
+ },
+ "crt0_stop": "0x8000122",
+ "sram_init_sha256": "da83ff6a43f2bdc2e83495fc570f6af166483c40c9673a5a5a819dce4d205f29",
+ "if1_report_ids_populated": [
+  2,
+  3,
+  4
+ ],
+ "not_found": {
+  "hook_declines": "0x8007040",
+  "std_stall": "0x800866a",
+  "gud_exit_or_not_found": "0x8007460",
+  "get_report_dispatch_exit_or_no_iface": "0x8007846",
+  "get_report_if1_exit_or_absent_id": "0x80077d0"
+ },
+ "usb_exc": 47,
+ "tick_exc": 31,
+ "entries": [
+  {
+   "id": "X_GET_STATUS_DEV",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 0,
+    "value": 0,
+    "index": 0,
+    "length": 2,
+    "setup_hex": "8000000000000200"
+   },
+   "handler": "0x80086e4",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_GET_STATUS_IF"
+  },
+  {
+   "id": "X_GET_STATUS_IF",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 129,
+    "req": 0,
+    "value": 0,
+    "index": 0,
+    "length": 2,
+    "setup_hex": "8100000000000200"
+   },
+   "handler": "0x8008776",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [
+    "X_SYNCH_FRAME"
+   ],
+   "next_entry": "X_GET_STATUS_EP_IN"
+  },
+  {
+   "id": "X_GET_STATUS_EP_IN",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 130,
+    "req": 0,
+    "value": 0,
+    "index": 129,
+    "length": 2,
+    "setup_hex": "8200000081000200"
+   },
+   "handler": "0x8008816",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_GET_STATUS_EP_OUT"
+  },
+  {
+   "id": "X_GET_STATUS_EP_OUT",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 130,
+    "req": 0,
+    "value": 0,
+    "index": 1,
+    "length": 2,
+    "setup_hex": "8200000001000200"
+   },
+   "handler": "0x8008830",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_CLEAR_FEATURE_DEV_RW"
+  },
+  {
+   "id": "X_CLEAR_FEATURE_DEV_RW",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 0,
+    "req": 1,
+    "value": 1,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "0001010000000000"
+   },
+   "handler": "0x800878e",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_CLEAR_FEATURE_EP_IN"
+  },
+  {
+   "id": "X_CLEAR_FEATURE_EP_IN",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 2,
+    "req": 1,
+    "value": 0,
+    "index": 129,
+    "length": 0,
+    "setup_hex": "0201000081000000"
+   },
+   "handler": "0x800885a",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_CLEAR_FEATURE_EP_OUT"
+  },
+  {
+   "id": "X_CLEAR_FEATURE_EP_OUT",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 2,
+    "req": 1,
+    "value": 0,
+    "index": 1,
+    "length": 0,
+    "setup_hex": "0201000001000000"
+   },
+   "handler": "0x8008860",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SET_FEATURE_DEV_RW"
+  },
+  {
+   "id": "X_SET_FEATURE_DEV_RW",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 0,
+    "req": 3,
+    "value": 1,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "0003010000000000"
+   },
+   "handler": "0x800870e",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SET_FEATURE_EP_IN"
+  },
+  {
+   "id": "X_SET_FEATURE_EP_IN",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 2,
+    "req": 3,
+    "value": 0,
+    "index": 129,
+    "length": 0,
+    "setup_hex": "0203000081000000"
+   },
+   "handler": "0x800888a",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SET_FEATURE_EP_OUT"
+  },
+  {
+   "id": "X_SET_FEATURE_EP_OUT",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 2,
+    "req": 3,
+    "value": 0,
+    "index": 1,
+    "length": 0,
+    "setup_hex": "0203000001000000"
+   },
+   "handler": "0x8008890",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "call"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SET_ADDRESS"
+  },
+  {
+   "id": "X_SET_ADDRESS",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 0,
+    "req": 5,
+    "value": 42,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "00052a0000000000"
+   },
+   "handler": "0x80087a2",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "E_DEVICE"
+  },
+  {
+   "id": "E_DEVICE",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 256,
+    "index": 0,
+    "length": 18,
+    "setup_hex": "8006000100001200"
+   },
+   "handler": "0x80074b8",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 0,
+   "handler_shared_with": [],
+   "next_entry": "E_CONFIG"
+  },
+  {
+   "id": "E_CONFIG",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 512,
+    "index": 0,
+    "length": 84,
+    "setup_hex": "8006000200005400"
+   },
+   "handler": "0x800745c",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 0,
+   "handler_shared_with": [],
+   "next_entry": "E_STRING_0"
+  },
+  {
+   "id": "E_STRING_0",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 768,
+    "index": 0,
+    "length": 255,
+    "setup_hex": "800600030000ff00"
+   },
+   "handler": "0x80074be",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 0,
+   "handler_shared_with": [],
+   "next_entry": "E_STRING_1"
+  },
+  {
+   "id": "E_STRING_1",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 769,
+    "index": 1033,
+    "length": 255,
+    "setup_hex": "800601030904ff00"
+   },
+   "handler": "0x8007494",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 1033,
+   "handler_shared_with": [],
+   "next_entry": "E_STRING_2"
+  },
+  {
+   "id": "E_STRING_2",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 770,
+    "index": 1033,
+    "length": 255,
+    "setup_hex": "800602030904ff00"
+   },
+   "handler": "0x800749a",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 1033,
+   "handler_shared_with": [],
+   "next_entry": "E_STRING_3"
+  },
+  {
+   "id": "E_STRING_3",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 771,
+    "index": 1033,
+    "length": 255,
+    "setup_hex": "800603030904ff00"
+   },
+   "handler": "0x80074a0",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x8007040",
+    "std:0x8008734"
+   ],
+   "chain_stops": [
+    "ret",
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 1033,
+   "handler_shared_with": [],
+   "next_entry": "X_GET_CONFIGURATION"
+  },
+  {
+   "id": "X_GET_CONFIGURATION",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 128,
+    "req": 8,
+    "value": 0,
+    "index": 0,
+    "length": 1,
+    "setup_hex": "8008000000000100"
+   },
+   "handler": "0x80087aa",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SET_CONFIGURATION"
+  },
+  {
+   "id": "X_SET_CONFIGURATION",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 0,
+    "req": 9,
+    "value": 1,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "0009010000000000"
+   },
+   "handler": "0x80087e4",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "X_SYNCH_FRAME"
+  },
+  {
+   "id": "X_SYNCH_FRAME",
+   "census_iface": "device",
+   "class": "extra",
+   "setup": {
+    "bm": 130,
+    "req": 12,
+    "value": 0,
+    "index": 129,
+    "length": 2,
+    "setup_hex": "820c000081000200"
+   },
+   "handler": "0x8008776",
+   "handler_kind": "std",
+   "handler_fn": "0x8008654",
+   "route": [
+    "hook:0x8007040"
+   ],
+   "chain_stops": [
+    "ret",
+    "store"
+   ],
+   "handler_shared_with": [
+    "X_GET_STATUS_IF"
+   ],
+   "next_entry": "E_HID_CLASS_IF0"
+  },
+  {
+   "id": "E_HID_CLASS_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8448,
+    "index": 0,
+    "length": 9,
+    "setup_hex": "8106002100000900"
+   },
+   "handler": "0x80074ae",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 0,
+   "handler_shared_with": [
+    "E_HID_CLASS_IF1",
+    "E_HID_CLASS_IF2"
+   ],
+   "next_entry": "E_HID_REPORT_IF0"
+  },
+  {
+   "id": "E_HID_REPORT_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8704,
+    "index": 0,
+    "length": 68,
+    "setup_hex": "8106002200004400"
+   },
+   "handler": "0x8007476",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 0,
+   "handler_shared_with": [
+    "E_HID_REPORT_IF1",
+    "E_HID_REPORT_IF2"
+   ],
+   "next_entry": "E_GET_REPORT_IF0"
+  },
+  {
+   "id": "E_GET_REPORT_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 256,
+    "index": 0,
+    "length": 8,
+    "setup_hex": "a101000100000800"
+   },
+   "handler": "0x8007754",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x800774c",
+   "route": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_GET_REPORT_IF2"
+   ],
+   "next_entry": "E_GET_IDLE_IF0"
+  },
+  {
+   "id": "E_GET_IDLE_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 2,
+    "value": 0,
+    "index": 0,
+    "length": 1,
+    "setup_hex": "a102000000000100"
+   },
+   "handler": "0x800787a",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x8007874",
+   "route": [
+    "hook:0x8006faa",
+    "hook.1:0x8007a7a"
+   ],
+   "chain_stops": [
+    "ret"
+   ],
+   "handler_shared_with": [
+    "E_GET_IDLE_IF2"
+   ],
+   "next_entry": "E_SET_IDLE_IF0"
+  },
+  {
+   "id": "E_SET_IDLE_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 10,
+    "value": 0,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "210a000000000000"
+   },
+   "handler": "0x800785e",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x8007858",
+   "route": [
+    "hook:0x8006fec",
+    "hook.1:0x8007ad0"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_SET_IDLE_IF2"
+   ],
+   "next_entry": "E_GET_PROTOCOL_IF0"
+  },
+  {
+   "id": "E_GET_PROTOCOL_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 3,
+    "value": 0,
+    "index": 0,
+    "length": 1,
+    "setup_hex": "a103000000000100"
+   },
+   "handler": "0x8006f96",
+   "handler_kind": "hook",
+   "handler_fn": "0x8006f60",
+   "route": [],
+   "chain_stops": [
+    "ret"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "E_SET_PROTOCOL_IF0"
+  },
+  {
+   "id": "E_SET_PROTOCOL_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 11,
+    "value": 1,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "210b010000000000"
+   },
+   "handler": "0x8006fde",
+   "handler_kind": "hook",
+   "handler_fn": "0x8006f60",
+   "route": [],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "E_SET_REPORT_IF0"
+  },
+  {
+   "id": "E_SET_REPORT_IF0",
+   "census_iface": "iface0",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 9,
+    "value": 512,
+    "index": 0,
+    "length": 1,
+    "setup_hex": "2109000200000100",
+    "out_hex": "02"
+   },
+   "handler": "0x80070b8",
+   "handler_kind": "cb",
+   "handler_fn": "0x8007098",
+   "route": [
+    "hook:0x8006fca"
+   ],
+   "chain_stops": [
+    "store",
+    "ret"
+   ],
+   "out_cb": "0x8007098",
+   "handler_shared_with": [],
+   "next_entry": "E_HID_CLASS_IF1"
+  },
+  {
+   "id": "E_HID_CLASS_IF1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8448,
+    "index": 1,
+    "length": 9,
+    "setup_hex": "8106002101000900"
+   },
+   "handler": "0x80074ae",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 1,
+   "handler_shared_with": [
+    "E_HID_CLASS_IF0",
+    "E_HID_CLASS_IF2"
+   ],
+   "next_entry": "E_HID_REPORT_IF1"
+  },
+  {
+   "id": "E_HID_REPORT_IF1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8704,
+    "index": 1,
+    "length": 123,
+    "setup_hex": "8106002201007b00"
+   },
+   "handler": "0x8007476",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 1,
+   "handler_shared_with": [
+    "E_HID_REPORT_IF0",
+    "E_HID_REPORT_IF2"
+   ],
+   "next_entry": "E_GET_IDLE_IF1"
+  },
+  {
+   "id": "E_GET_IDLE_IF1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 2,
+    "value": 0,
+    "index": 1,
+    "length": 1,
+    "setup_hex": "a102000001000100"
+   },
+   "handler": "0x800790a",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x80078f4",
+   "route": [
+    "hook:0x8006faa",
+    "hook.1:0x8007a7a"
+   ],
+   "chain_stops": [
+    "ret"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "E_SET_IDLE_IF1"
+  },
+  {
+   "id": "E_SET_IDLE_IF1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 10,
+    "value": 0,
+    "index": 1,
+    "length": 0,
+    "setup_hex": "210a000001000000"
+   },
+   "handler": "0x80078ee",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x80078d0",
+   "route": [
+    "hook:0x8006fec",
+    "hook.1:0x8007ad0"
+   ],
+   "chain_stops": [
+    "ret"
+   ],
+   "handler_shared_with": [],
+   "next_entry": "E_SET_PROTOCOL_IF1"
+  },
+  {
+   "id": "E_SET_PROTOCOL_IF1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 11,
+    "value": 1,
+    "index": 1,
+    "length": 0,
+    "setup_hex": "210b010001000000"
+   },
+   "handler": "0x8006fe4",
+   "handler_kind": "hook",
+   "handler_fn": "0x8006f60",
+   "route": [],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_SET_PROTOCOL_IF2"
+   ],
+   "next_entry": "E_SET_REPORT_IF1_ID1"
+  },
+  {
+   "id": "E_SET_REPORT_IF1_ID1",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 9,
+    "value": 513,
+    "index": 1,
+    "length": 2,
+    "setup_hex": "2109010201000200",
+    "out_hex": "0102"
+   },
+   "handler": "0x80070b6",
+   "handler_kind": "cb",
+   "handler_fn": "0x8007098",
+   "route": [
+    "hook:0x8006fca"
+   ],
+   "chain_stops": [
+    "store",
+    "ret"
+   ],
+   "out_cb": "0x8007098",
+   "handler_shared_with": [
+    "E_SET_REPORT_IF1_ID6"
+   ],
+   "next_entry": "E_SET_REPORT_IF1_ID6"
+  },
+  {
+   "id": "E_SET_REPORT_IF1_ID6",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 9,
+    "value": 518,
+    "index": 1,
+    "length": 2,
+    "setup_hex": "2109060201000200",
+    "out_hex": "0602"
+   },
+   "handler": "0x80070b6",
+   "handler_kind": "cb",
+   "handler_fn": "0x8007098",
+   "route": [
+    "hook:0x8006fca"
+   ],
+   "chain_stops": [
+    "store",
+    "ret"
+   ],
+   "out_cb": "0x8007098",
+   "handler_shared_with": [
+    "E_SET_REPORT_IF1_ID1"
+   ],
+   "next_entry": "E_HID_CLASS_IF2"
+  },
+  {
+   "id": "E_HID_CLASS_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8448,
+    "index": 2,
+    "length": 9,
+    "setup_hex": "8106002102000900"
+   },
+   "handler": "0x80074ae",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 2,
+   "handler_shared_with": [
+    "E_HID_CLASS_IF0",
+    "E_HID_CLASS_IF1"
+   ],
+   "next_entry": "E_HID_REPORT_IF2"
+  },
+  {
+   "id": "E_HID_REPORT_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8704,
+    "index": 2,
+    "length": 21,
+    "setup_hex": "8106002202001500"
+   },
+   "handler": "0x8007476",
+   "handler_kind": "gud",
+   "handler_fn": "0x8007444",
+   "route": [
+    "hook:0x800700a"
+   ],
+   "chain_stops": [
+    "call",
+    "store"
+   ],
+   "gud_r1_at_arm": 2,
+   "handler_shared_with": [
+    "E_HID_REPORT_IF0",
+    "E_HID_REPORT_IF1"
+   ],
+   "next_entry": "E_GET_REPORT_IF2"
+  },
+  {
+   "id": "E_GET_REPORT_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 256,
+    "index": 2,
+    "length": 32,
+    "setup_hex": "a101000102002000"
+   },
+   "handler": "0x8007754",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x800774c",
+   "route": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_GET_REPORT_IF0"
+   ],
+   "next_entry": "E_GET_IDLE_IF2"
+  },
+  {
+   "id": "E_GET_IDLE_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 2,
+    "value": 0,
+    "index": 2,
+    "length": 1,
+    "setup_hex": "a102000002000100"
+   },
+   "handler": "0x800787a",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x8007874",
+   "route": [
+    "hook:0x8006faa",
+    "hook.1:0x8007a7a"
+   ],
+   "chain_stops": [
+    "ret"
+   ],
+   "handler_shared_with": [
+    "E_GET_IDLE_IF0"
+   ],
+   "next_entry": "E_SET_IDLE_IF2"
+  },
+  {
+   "id": "E_SET_IDLE_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 10,
+    "value": 0,
+    "index": 2,
+    "length": 0,
+    "setup_hex": "210a000002000000"
+   },
+   "handler": "0x800785e",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x8007858",
+   "route": [
+    "hook:0x8006fec",
+    "hook.1:0x8007ad0"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_SET_IDLE_IF0"
+   ],
+   "next_entry": "E_SET_PROTOCOL_IF2"
+  },
+  {
+   "id": "E_SET_PROTOCOL_IF2",
+   "census_iface": "iface2",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 33,
+    "req": 11,
+    "value": 1,
+    "index": 2,
+    "length": 0,
+    "setup_hex": "210b010002000000"
+   },
+   "handler": "0x8006fe4",
+   "handler_kind": "hook",
+   "handler_fn": "0x8006f60",
+   "route": [],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_SET_PROTOCOL_IF1"
+   ],
+   "next_entry": "E_GET_REPORT_IF1_ID2"
+  },
+  {
+   "id": "E_GET_REPORT_IF1_ID2",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 258,
+    "index": 1,
+    "length": 32,
+    "setup_hex": "a101020101002000"
+   },
+   "handler": "0x80077c0",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x80077b2",
+   "route": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_GET_REPORT_IF1_ID3",
+    "E_GET_REPORT_IF1_ID4"
+   ],
+   "next_entry": "E_GET_REPORT_IF1_ID3"
+  },
+  {
+   "id": "E_GET_REPORT_IF1_ID3",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 259,
+    "index": 1,
+    "length": 32,
+    "setup_hex": "a101030101002000"
+   },
+   "handler": "0x80077c0",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x80077b2",
+   "route": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_GET_REPORT_IF1_ID2",
+    "E_GET_REPORT_IF1_ID4"
+   ],
+   "next_entry": "E_GET_REPORT_IF1_ID4"
+  },
+  {
+   "id": "E_GET_REPORT_IF1_ID4",
+   "census_iface": "iface1",
+   "class": "census-expansion",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 260,
+    "index": 1,
+    "length": 32,
+    "setup_hex": "a101040101002000"
+   },
+   "handler": "0x80077c0",
+   "handler_kind": "hook.2",
+   "handler_fn": "0x80077b2",
+   "route": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e"
+   ],
+   "chain_stops": [
+    "store"
+   ],
+   "handler_shared_with": [
+    "E_GET_REPORT_IF1_ID2",
+    "E_GET_REPORT_IF1_ID3"
+   ],
+   "next_entry": "X_GET_STATUS_DEV"
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl-desc-type-0x99",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 39168,
+    "index": 0,
+    "length": 16,
+    "setup_hex": "8006009900001000"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x8008734",
+    "gud:0x8007460"
+   ]
+  },
+  {
+   "id": "ctl-string-index-4",
+   "setup": {
+    "bm": 128,
+    "req": 6,
+    "value": 772,
+    "index": 1033,
+    "length": 64,
+    "setup_hex": "8006040309044000"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x8008734",
+    "gud:0x8007460"
+   ]
+  },
+  {
+   "id": "ctl-hid-class-iface-9",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8448,
+    "index": 9,
+    "length": 9,
+    "setup_hex": "8106002109000900"
+   },
+   "static_path": [
+    "hook:0x800700a",
+    "gud:0x8007460"
+   ]
+  },
+  {
+   "id": "ctl-report-iface-9",
+   "setup": {
+    "bm": 129,
+    "req": 6,
+    "value": 8704,
+    "index": 9,
+    "length": 64,
+    "setup_hex": "8106002209004000"
+   },
+   "static_path": [
+    "hook:0x800700a",
+    "gud:0x8007460"
+   ]
+  },
+  {
+   "id": "ctl-get-protocol-iface-1",
+   "setup": {
+    "bm": 161,
+    "req": 3,
+    "value": 0,
+    "index": 1,
+    "length": 1,
+    "setup_hex": "a103000001000100"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x800866a"
+   ]
+  },
+  {
+   "id": "ctl-get-report-iface-9",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 256,
+    "index": 9,
+    "length": 8,
+    "setup_hex": "a101000109000800"
+   },
+   "static_path": [
+    "hook:0x8006f86",
+    "hook.1:0x8007846"
+   ]
+  },
+  {
+   "id": "ctl-set-report-iface-2",
+   "setup": {
+    "bm": 33,
+    "req": 9,
+    "value": 512,
+    "index": 2,
+    "length": 1,
+    "setup_hex": "2109000202000100",
+    "out_hex": "02"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x800866a"
+   ]
+  },
+  {
+   "id": "ctl-get-report-if1-id5",
+   "setup": {
+    "bm": 161,
+    "req": 1,
+    "value": 261,
+    "index": 1,
+    "length": 32,
+    "setup_hex": "a101050101002000"
+   },
+   "static_path": [
+    "hook:0x8006f86",
+    "hook.1:0x800782e",
+    "hook.2:0x80077d0"
+   ]
+  },
+  {
+   "id": "ctl-set-report-if1-id5-len2",
+   "setup": {
+    "bm": 33,
+    "req": 9,
+    "value": 517,
+    "index": 1,
+    "length": 2,
+    "setup_hex": "2109050201000200",
+    "out_hex": "0502"
+   },
+   "static_path": [
+    "hook:0x8006fca",
+    "cb:0x80070bc"
+   ]
+  },
+  {
+   "id": "ctl-vendor-request",
+   "setup": {
+    "bm": 64,
+    "req": 90,
+    "value": 0,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "405a000000000000"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x800866a"
+   ]
+  },
+  {
+   "id": "ctl-get-interface",
+   "setup": {
+    "bm": 129,
+    "req": 10,
+    "value": 0,
+    "index": 0,
+    "length": 1,
+    "setup_hex": "810a000000000100"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x8008774"
+   ]
+  },
+  {
+   "id": "ctl-set-interface",
+   "setup": {
+    "bm": 1,
+    "req": 11,
+    "value": 0,
+    "index": 0,
+    "length": 0,
+    "setup_hex": "010b000000000000"
+   },
+   "static_path": [
+    "hook:0x8007040",
+    "std:0x8008774"
+   ]
+  },
+  {
+   "id": "ctl-silence",
+   "setup": null
+  }
+ ],
+ "hooks": [
+  {
+   "kind": "entry",
+   "addr": "0x8006f60",
+   "label": "requests_hook_cb"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8007444",
+   "label": "get_usb_descriptor"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80086e4",
+   "label": "X_GET_STATUS_DEV",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8008776",
+   "label": "X_GET_STATUS_IF+X_SYNCH_FRAME",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8008816",
+   "label": "X_GET_STATUS_EP_IN",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8008830",
+   "label": "X_GET_STATUS_EP_OUT",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800878e",
+   "label": "X_CLEAR_FEATURE_DEV_RW",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800885a",
+   "label": "X_CLEAR_FEATURE_EP_IN",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8008860",
+   "label": "X_CLEAR_FEATURE_EP_OUT",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800870e",
+   "label": "X_SET_FEATURE_DEV_RW",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800888a",
+   "label": "X_SET_FEATURE_EP_IN",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8008890",
+   "label": "X_SET_FEATURE_EP_OUT",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80087a2",
+   "label": "X_SET_ADDRESS",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80074b8",
+   "label": "E_DEVICE",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800745c",
+   "label": "E_CONFIG",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80074be",
+   "label": "E_STRING_0",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8007494",
+   "label": "E_STRING_1",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800749a",
+   "label": "E_STRING_2",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80074a0",
+   "label": "E_STRING_3",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80087aa",
+   "label": "X_GET_CONFIGURATION",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80087e4",
+   "label": "X_SET_CONFIGURATION",
+   "akind": "std"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80074ae",
+   "label": "E_HID_CLASS_IF0+E_HID_CLASS_IF1+E_HID_CLASS_IF2",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8007476",
+   "label": "E_HID_REPORT_IF0+E_HID_REPORT_IF1+E_HID_REPORT_IF2",
+   "akind": "gud"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8007754",
+   "label": "E_GET_REPORT_IF0+E_GET_REPORT_IF2",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800787a",
+   "label": "E_GET_IDLE_IF0+E_GET_IDLE_IF2",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800785e",
+   "label": "E_SET_IDLE_IF0+E_SET_IDLE_IF2",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8006f96",
+   "label": "E_GET_PROTOCOL_IF0",
+   "akind": "hook"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8006fde",
+   "label": "E_SET_PROTOCOL_IF0",
+   "akind": "hook"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80070b8",
+   "label": "E_SET_REPORT_IF0",
+   "akind": "cb"
+  },
+  {
+   "kind": "own",
+   "addr": "0x800790a",
+   "label": "E_GET_IDLE_IF1",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80078ee",
+   "label": "E_SET_IDLE_IF1",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "own",
+   "addr": "0x8006fe4",
+   "label": "E_SET_PROTOCOL_IF1+E_SET_PROTOCOL_IF2",
+   "akind": "hook"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80070b6",
+   "label": "E_SET_REPORT_IF1_ID1+E_SET_REPORT_IF1_ID6",
+   "akind": "cb"
+  },
+  {
+   "kind": "own",
+   "addr": "0x80077c0",
+   "label": "E_GET_REPORT_IF1_ID2+E_GET_REPORT_IF1_ID3+E_GET_REPORT_IF1_ID4",
+   "akind": "hook.2"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8007040",
+   "label": "route-hook-0x8007040"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8008734",
+   "label": "route-std-0x8008734"
+  },
+  {
+   "kind": "route",
+   "addr": "0x800700a",
+   "label": "route-hook-0x800700a"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8006f86",
+   "label": "route-hook-0x8006f86"
+  },
+  {
+   "kind": "route",
+   "addr": "0x800782e",
+   "label": "route-hook.1-0x800782e"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8006faa",
+   "label": "route-hook-0x8006faa"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8007a7a",
+   "label": "route-hook.1-0x8007a7a"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8006fec",
+   "label": "route-hook-0x8006fec"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8007ad0",
+   "label": "route-hook.1-0x8007ad0"
+  },
+  {
+   "kind": "route",
+   "addr": "0x8006fca",
+   "label": "route-hook-0x8006fca"
+  },
+  {
+   "kind": "shared",
+   "addr": "0x8007846",
+   "label": "get_report_dispatch_exit_or_no_iface"
+  },
+  {
+   "kind": "shared",
+   "addr": "0x80077d0",
+   "label": "get_report_if1_exit_or_absent_id"
+  },
+  {
+   "kind": "shared",
+   "addr": "0x8007460",
+   "label": "gud_exit_or_not_found"
+  },
+  {
+   "kind": "shared",
+   "addr": "0x800866a",
+   "label": "std_stall"
+  },
+  {
+   "kind": "isr",
+   "addr": "0x8008d0e",
+   "label": "TIM2_IRQHandler+2(exc31)"
+  }
+ ]
+}
