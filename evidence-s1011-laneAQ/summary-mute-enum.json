@@ -1,0 +1,53 @@
+{
+ "inputs": 16,
+ "entries": 15,
+ "census_expansions": 7,
+ "extras": 8,
+ "reached": 15,
+ "reached_census": 7,
+ "live_of_reached": 15,
+ "not_reached": [],
+ "not_live": [],
+ "boot_hits_total": 1344,
+ "next_entry_true": 0,
+ "next_entry_any_true": 0,
+ "credited_other_total": 0,
+ "controls_credited": {},
+ "controls_any_own": {
+  "ctl-silence": []
+ },
+ "inverted_live_matched": 0,
+ "live_all_inputs": 16,
+ "distinct_live_addr": 16,
+ "image_ok_all": true,
+ "backend_sha": [
+  "e9af21330154ad42484002fe4c7236321925df29fdeecb7aac2d15c371f5b355"
+ ],
+ "faults_total": 0,
+ "harness_errors": [],
+ "hook_log_pid_ok_all": true,
+ "hooks_registered_all": true,
+ "no_enum_patched": [
+  "False"
+ ],
+ "own_contexts": [
+  [
+   47,
+   1
+  ]
+ ],
+ "isr_contexts": [
+  [
+   31,
+   1
+  ]
+ ],
+ "load_range": [
+  10.88,
+  12.22
+ ],
+ "wall_range": [
+  20.7,
+  106.9
+ ]
+}

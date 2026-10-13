@@ -1,6 +1,254 @@
-<!-- rehostry-census: milestone=M8 landed=true verdict=M4-OK verified=2026-09-05 method=live-run path=rehostry-bdn9-attack core=hal-b0818-on-9bde2c0@60619b7 note=parity-3of3-on-the-default-path-no-flags -->
+<!-- rehostry-census: milestone=M8 landed=true verdict=M4-OK verified=2026-09-05 method=live-run path=rehostry-bdn9-attack core=hal-b0818-on-9bde2c0@60619b7 fuzz_reach=44of44 fuzz_live=44of44 note=parity-3of3-on-the-default-path-no-flags -->
 <!-- Copyright 2026 Christopher Wright; SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Status — device-bdn9-stm32f072
+
+## 2026-10-13 — lane s1011-laneAQ: fuzz reach by handler hook on the USB control endpoint, one fresh boot per entry
+
+**`fuzz_reach=44of44 fuzz_live=44of44`, every entry the first SETUP on the wire.** The census lists this row as
+three entries, one per HID interface (`iface0`, `iface1`, `iface2`). Each is expanded here into the control requests
+the image's own dispatch parses for that `wIndex` (24 entries), plus 20 device-level standard requests the census
+does not list. `n=`, `milestone=` and every other header token are byte-for-byte unchanged
+(`evidence-s1011-laneAQ/header-check.txt`). This measures fuzz reachability, not M8 parity.
+
+Image `bdn9.bin` sha256 `4928398d043e615ae3ea213c73da7b6e6d044215ee9d6d70a51e31fb2c56d6da` (not committed). Every
+boot ran on its own copy of `configs/`; the packaged image and every copy hashed identically before and after all
+five arms (140 boots). The config maps the flash `rwx` for QMK's wear-levelling EEPROM, and those writes stay in
+emulator memory: no file changed. Replies are stored as status, length and sha256 only.
+
+### Where the denominator comes from, and corrections to the census
+
+* **EP0 is the only host input.** The CONFIGURATION descriptor declares three interrupt IN endpoints and no
+  interrupt OUT endpoint. There is no raw-HID or VIA interface in this build, so there is no command set beyond
+  EP0. Interface 2 (QMK console, usage page `0xFF31`) is IN-only for data, but it **does** take HID class requests on
+  EP0 (GET_REPORT, GET_IDLE, SET_IDLE, SET_PROTOCOL); SET_REPORT to it is refused (control
+  `ctl-set-report-iface-2`).
+* **24 census expansions**, by interface:
+  * iface 0 (8): HID class and REPORT descriptors, GET_REPORT, GET_IDLE, SET_IDLE, GET_PROTOCOL, SET_PROTOCOL,
+    SET_REPORT(Output, 1 byte).
+  * iface 1 (10): HID class and REPORT descriptors, GET_REPORT for Report IDs 2, 3 and 4, GET_IDLE, SET_IDLE,
+    SET_PROTOCOL, and SET_REPORT with Report ID 1 and 6. The Report IDs come from executing the image: of IDs 0–8,
+    only 2, 3 and 4 have a populated report-storage slot in `.data`; the others reach the empty-slot return
+    (control `ctl-get-report-if1-id5`). The OUT callback accepts 2-byte reports only with ID 1 or 6; ID 5 is
+    accepted at EP0 and then ignored (control `ctl-set-report-if1-id5-len2`).
+  * iface 2 (6): HID class and REPORT descriptors, GET_REPORT, GET_IDLE, SET_IDLE, SET_PROTOCOL.
+* **20 device-level extras (`X_*` and `E_DEVICE`/`E_CONFIG`/`E_STRING_0..3`):** GET_DESCRIPTOR DEVICE,
+  CONFIGURATION and STRING 0–3, and every other arm of ChibiOS' standard switch: GET_STATUS (device, interface, IN
+  endpoint, OUT endpoint), CLEAR_FEATURE and SET_FEATURE (remote wakeup, IN endpoint, OUT endpoint), SET_ADDRESS,
+  GET_CONFIGURATION, SET_CONFIGURATION and SYNCH_FRAME. GET_INTERFACE and SET_INTERFACE have no arm in this build
+  (controls).
+* **Not counted:** the nine key switches and three encoders (the bridge's `KEY`/`ENC` verbs drive GPIO). They are
+  physical inputs, not a host interface, and are not in the census. The device's IN reports are emitted, not parsed.
+
+### The handlers, from the image's own dispatch
+
+The image is stripped ARMv6-M. `tools/fuzz_reach_targets.py` **locates** the dispatch by content:
+* `get_usb_descriptor` `0x08007444` is the only function containing `lsrs r5,r0,#8 ; cmp r5,#3`.
+* Its single caller is `get_descriptor_cb` `0x0800705c`, whose literal pointer sits in ChibiOS' `USBConfig` at
+  `0x0800af94`; that gives QMK's `requests_hook_cb` `0x08006f60`.
+* ChibiOS' `_usb_ep0setup` hook-load site `0x08008654` is the only `ldr r3,[r4,#4] ; ldr r3,[r3,#8] ; cmp r3,#0 ;
+  bne`. The setup packet sits at `usbp+0x74` (the hook's own `adds r1,#0x74`).
+* ARMv6-M has no `tbb`; switches go through libgcc's case helpers (`0x080001dc`, `0x080001f0`, `0x08000204`,
+  `0x08000218`), which the tool treats as decisions.
+
+It then **executes** those dispatchers per request in a bare unicorn instance holding this image, the SRAM the
+image's own crt0 produces (`.data` copied, `.bss` zeroed: QMK's per-interface report-storage tables live there),
+and a scratch `USBDriver` whose setup bytes are the request. An arm is the first instruction after a level's last
+conditional decision before the first effect. Inside QMK's hook, a call through a table or one that passes `usbp`
+is followed as a new level; other calls run opaquely. In ChibiOS' standard switch any call ends the run. An entry's
+**own** handler is the deepest level's arm; the others are **route** hooks, recorded and never credited. The tool
+asserts that no entry's route passes through another entry's own handler, and that no control's static path
+reaches an own handler. `--check` re-derives the file; every arm header shows `PASS`.
+
+⚠ **Shared labels.** 21 entries share a handler address with another entry:
+* HID class IF0/1/2 (`0x080074ae`) and REPORT IF0/1/2 (`0x08007476`): `get_usb_descriptor` arms indexed by `r1`.
+* GET_REPORT, GET_IDLE and SET_IDLE on IF0 and IF2 (`0x08007754`, `0x0800787a`, `0x0800785e`): the same
+  report-storage callee serves both interfaces, with different storage.
+* GET_REPORT IF1 IDs 2/3/4 (`0x080077c0`), SET_REPORT IF1 IDs 1/6 (`0x080070b6`), SET_PROTOCOL IF1/IF2
+  (`0x08006fe4`), and `X_GET_STATUS_IF`/`X_SYNCH_FRAME` (`0x08008776`, ChibiOS' "two zero bytes").
+
+They are credited only through identity at hit time under the first-hit rule. Counting only entries whose handler
+address is their own, reach is **23 of 44**.
+
+Three hooked addresses are **common exits** as well as not-found arms, so they fire on found requests too and are
+never credited: `get_usb_descriptor`'s exit `0x08007460`, the GET_REPORT dispatcher's exit `0x08007846`, and the
+IF1 storage callee's exit `0x080077d0`. The standard-switch stall arm is `0x0800866a`.
+
+### Identity at hit time, and where the handler runs
+
+Entry `k` is credited only if the **first** `own` hook record after `k`'s SETUP is `k`'s own handler and carries
+`k`'s identity, all read from guest state at hit time:
+* the **8 SETUP bytes** read from the guest's own `usbp->setup` (`usbp` taken from `r0` at `requests_hook_cb`'s first
+  instruction in the same request) equal `k`'s;
+* **IPSR is 47**, the USB interrupt (IRQ 31);
+* for a `get_usb_descriptor` arm, `r1` is `k`'s `wIndex`;
+* for the SET_REPORT OUT callback, the OUT bytes read through the guest's own `usbp->ep0next` are `k`'s.
+
+**Where it runs:** ChibiOS serves EP0 from the USB ISR, so every handler here is **ISR-resident**. Every own record
+in all five arms read **IPSR 47, depth 1**. **The check can move:** a probe on `TIM2_IRQHandler+2` (`0x08008d0e`,
+ChibiOS' tickless time base) read **IPSR 31, depth 1** in every sample, and a rule requiring IPSR 47 rejects it.
+
+### How an entry is sent, settle, and liveness
+
+* **Entry first.** The row's host model (`peripheral_models/usb_host.py`) queues its own 16-request enumeration
+  script as soon as EP0 opens. With `FUZZ_REACH_NO_ENUM=1` (row-local, opt-in, in the emulator process only),
+  `bp_handlers/fuzz_reach_probe.py` replaces `UsbHost._enqueue_enumeration` with a no-op. Only the bus reset then
+  precedes the input, and the emulator log's SETUP lines show the input as the first SETUP in every graded boot.
+  * **Mute control, measured (arm `mute-enum`, 16 inputs):** with the script on, every boot recorded **84 hook
+    records before the input**. The graded arms recorded **0**.
+* **Harness.** Each input runs in its own child process, with its own emulator process group and a forced
+  `os._exit`. The harness is this repo at `b737040`, committed before every arm. Arms `final` and `final2` each ran
+  57 inputs (44 entries, 13 controls); `mute-enum` 16; `gate-wrong` 5; `no-gate` 5.
+* **Ports and slots.** Two at a time on slots 0–1. Slot `k` uses ports `39990+3k` to `+2` (bridge, zmq rx, zmq tx),
+  asserted inside `39990..40009`. Child PIDs are in `child-pids-*.txt`.
+* **Bridge identity.** The bridge greets `HELLO device=rehostry-bdn9 pid=<our child> nonce=<per-boot secret>`, and
+  the hook log's `hello` carries the same pid. This held in all 140 boots. The bridge parses fields with
+  `int(x, 0)`, so the harness sends them `0x`-prefixed.
+* **Settle, in guest time.** The clock is the row's own 10 kHz guest clock (`guest_clock.get_clock().ticks`, TIM2's
+  count source), read in-process at every dispatch pass. The input goes after 2,000 ticks. Its phase ends at its
+  `RESP` line plus 2,000 ticks, or after 20,000 ticks. Wall-clock is only a ceiling; no graded phase ended on it.
+* **Live after.** The harness sends `SET_ADDRESS(A)`, with `A` minted per boot, then `GET_DESCRIPTOR(DEVICE)`.
+  * The row's controller model does not filter SETUPs by address, so the probe's opt-in, row-local
+    `FUZZ_REACH_ADDR_GATE=A` delivers the second request **only if the guest's own `DADDR` reads `A`**.
+  * The entry is live iff the device answers 18 bytes, the guest-written address is `A`, and the DEVICE handler
+    fired with its identity.
+  * **Inverted control** (`DADDR == A^1`): 0 of 114 graded boots.
+  * **The gate bites** (arm `gate-wrong`, gate wants `A^1`): **0 of 5 live**; every boot shows the guest at `A` and
+    the request not delivered.
+  * **Mute** (arm `no-gate`): 5 of 5 live.
+  * Distinct `A`: 46 of 57 in each of `final` and `final2`.
+* **Repeat.** `final2` reproduced every verdict, credit, own/shared label set and reply sha256 of `final`
+  (`repeat_diffs` empty).
+* **Venv.** `venvs-on-9bde2c0.noindex/bdn9-stm32f072`, as named in this STATUS (py3.12.12, unicorn 2.1.4). Its
+  interpreter resolves `hal-b0818-on-9bde2c0/src` at `60619b7e` (no tracked changes) at the start and end of every
+  arm. `unicorn_backend.py` sha256 was `e9af2133…71f5b355` at the start and end of every arm and in every boot.
+  No fetch.
+* **Load.** 10.3 → 72.8 (other lanes running). No verdict depends on timing.
+
+### Controls (`evidence-s1011-laneAQ/summary-final.json`, `summary-final2.json`)
+
+* **0 hook records during boot** in all 114 entry-first graded boots (and the 10 `gate-wrong`/`no-gate` boots).
+* **Next-entry identity:** each entry's hits were scored against the **next** entry's identity: **0** true under
+  the first-hit rule or any-hit, in both arms. No entry credited a second entry.
+* **Undeclared input reaches no own handler** (identical in both arms):
+
+| control | SETUP (wire bytes) | what fired | credited | reply | live |
+|---|---|---|---|---|---|
+| `ctl-desc-type-0x99` | `80 06 0099 0000 1000` | `get_usb_descriptor` exit, then the stall arm | none | STALL | y |
+| `ctl-string-index-4` (past the case table) | `80 06 0403 0904 4000` | `get_usb_descriptor` exit, stall arm | none | STALL | y |
+| `ctl-hid-class-iface-9` | `81 06 0021 0900 0900` | `get_usb_descriptor` exit, stall arm | none | STALL | y |
+| `ctl-report-iface-9` | `81 06 0022 0900 4000` | `get_usb_descriptor` exit, stall arm | none | STALL | y |
+| `ctl-get-protocol-iface-1` (wrong interface) | `a1 03 0000 0100 0100` | hook declines → stall arm | none | STALL | y |
+| `ctl-get-report-iface-9` | `a1 01 0001 0900 0800` | GET_REPORT dispatcher exit, stall arm | none | STALL | y |
+| `ctl-set-report-iface-2` (console) | `21 09 0002 0200 0100 + 02` | stall arm | none | STALL | y |
+| `ctl-get-report-if1-id5` (empty slot) | `a1 01 0501 0100 2000` | GET_REPORT dispatcher exit and IF1 storage-callee exit, then the stall | none | STALL | y |
+| `ctl-set-report-if1-id5-len2` | `21 09 0502 0100 0200 + 0502` | OUT callback's ignore path (not hooked) | none | ok, 0 B | y |
+| `ctl-vendor-request` | `40 5a 0000 0000 0000` | stall arm | none | STALL | y |
+| `ctl-get-interface` (no arm) | `81 0a 0000 0000 0100` | hook declines → stall arm | none | STALL | y |
+| `ctl-set-interface` (no arm) | `01 0b 0000 0000 0000` | hook declines → stall arm | none | STALL | y |
+| `ctl-silence` | nothing | nothing | none | — | y |
+
+`ctl-set-report-if1-id5-len2` is the one undeclared input the device acknowledges: EP0 accepts the OUT stage and
+the callback discards the report. It reaches no own handler.
+
+### Not live, and unexplained
+
+* **Not live:** none of the 44, without any recovery step. No recipe was needed, so the count with recipes is also
+  44 of 44.
+* **Faults:** no `UC_ERR`, unmapped access, traceback, harness error, `chSysHalt`, unhandled exception or
+  bootloader jump (the row's own `ChibiosHaltProbe` counters were 0) in any of the 140 boots.
+* **Unexplained:** none.
+* Two extras are **correct refusals that still prove reach**: `X_GET_STATUS_EP_IN/OUT` reach their own arms
+  (`0x08008816`/`0x08008830`) and STALL, because EP1 is not enabled on a device that has not been configured.
+* **Reset classes:** no EP0 request in this image reaches QMK's bootloader jump; `QK_BOOT` is a keycode, reachable
+  only from the key matrix, which this lane did not drive.
+
+### The fuzzer entry point
+
+```python
+from rehostry_bdn9.fuzz_entry import reach_one
+r = reach_one(entry="E_STRING_3")                                    # a declared entry, FIRST SETUP on the wire
+r = reach_one(setups=[(0x80, 6, 0x0303, 0x0409, 255), (0x21, 9, 0x0200, 0, 1, b"\x02")])  # ARBITRARY SETUPs (+ OUT data)
+r = reach_one(entry="E_DEVICE", no_enum=False)                       # mute control: the host model enumerates first
+r["handler_hit"], r["credited"], r["live_after"], r["entry_resp"], r["own_fired"], r["shared_fired"], r["spin"]
+```
+
+```
+venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/python -m rehostry_bdn9.fuzz_entry --entry E_STRING_3 --out x.json --workdir W
+venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/python -m rehostry_bdn9.fuzz_entry --setup 80:06:0303:0409:00ff 21:09:0200:0000:0001:02 --out x.json --workdir W
+venvs-on-9bde2c0.noindex/bdn9-stm32f072/bin/python -m rehostry_bdn9.fuzz_entry --sweep --workers 2 --outdir DIR [--with-enum] [--no-addr-gate] [--gate-wrong]
+```
+
+* **Cost.** Every call is **one fresh boot** of about 20 s wall, in its own process group, on its own copy of
+  `configs/`. Replies come back as status and bytes in-process, and are stored as length and sha256 only.
+* **Pre-enumeration.** A fuzzer that wants post-enumeration state must send `SET_ADDRESS`/`SET_CONFIGURATION`
+  itself, or use `no_enum=False`.
+* **Ports.** Ports come from `FUZZ_REACH_PORT_LOW`/`_HIGH`; the defaults are this lane's block (`39990..40009`).
+
+Evidence in `evidence-s1011-laneAQ/`:
+* `results-{final,final2,mute-enum,gate-wrong,no-gate}.json`: per input, the hook records (setup bytes, `r0`–`r3`,
+  OUT bytes, IPSR, depth, guest address), the gate record, the replies as status/length/sha256, liveness, last PC
+  samples, image and backend hashes, and pid;
+* `summary-*.json` and `arm-*.txt`;
+* `child-pids-*.txt`;
+* `header-check.txt`.
+
+**Not measured:**
+* any request after enumeration: every entry ran on an unaddressed, unconfigured device;
+* GET_REPORT/SET_REPORT shapes beyond those listed (other lengths, Feature/Input report types);
+* `SET_FEATURE(TEST_MODE)` and other standard-request values not listed;
+* the key switches and encoders;
+* whether the dispatch tables in `.data` change at run time (the derivation reads crt0's initial SRAM; the live
+  hooks are what the verdicts rest on).
+
+### Every input entry
+
+| # | entry | class | sent first (SETUP [+OUT]) | own handler (kind) | label shared with | reached | live after | reply | not-live class | last PC samples (guest main loop) | next-entry control |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `X_GET_STATUS_DEV` | device | `80 00 0000 0000 0200` | `0x80086e4` (std) | — | **y** | y | ok (2 B) | — | 0x800038c,0x80001ca | False |
+| 2 | `X_GET_STATUS_IF` | device | `81 00 0000 0000 0200` | `0x8008776` (std) | X_SYNCH_FRAME | **y** | y | ok (2 B) | — | 0x80001d0,0x800040e | False |
+| 3 | `X_GET_STATUS_EP_IN` | device | `82 00 0000 8100 0200` | `0x8008816` (std) | — | **y** | y | stall (0 B) | — | 0x8000460,0x80001ca | False |
+| 4 | `X_GET_STATUS_EP_OUT` | device | `82 00 0000 0100 0200` | `0x8008830` (std) | — | **y** | y | stall (0 B) | — | 0x800045c,0x80001ca | False |
+| 5 | `X_CLEAR_FEATURE_DEV_RW` | device | `00 01 0100 0000 0000` | `0x800878e` (std) | — | **y** | y | ok (0 B) | — | 0x800047e,0x80001ca | False |
+| 6 | `X_CLEAR_FEATURE_EP_IN` | device | `02 01 0000 8100 0000` | `0x800885a` (std) | — | **y** | y | ok (0 B) | — | 0x800952a,0x80001ca | False |
+| 7 | `X_CLEAR_FEATURE_EP_OUT` | device | `02 01 0000 0100 0000` | `0x8008860` (std) | — | **y** | y | ok (0 B) | — | 0x800046c,0x80001ca | False |
+| 8 | `X_SET_FEATURE_DEV_RW` | device | `00 03 0100 0000 0000` | `0x800870e` (std) | — | **y** | y | ok (0 B) | — | 0x80066de,0x80001ca | False |
+| 9 | `X_SET_FEATURE_EP_IN` | device | `02 03 0000 8100 0000` | `0x800888a` (std) | — | **y** | y | ok (0 B) | — | 0x80001ca,0x80001d0 | False |
+| 10 | `X_SET_FEATURE_EP_OUT` | device | `02 03 0000 0100 0000` | `0x8008890` (std) | — | **y** | y | ok (0 B) | — | 0x8000478,0x80001ca | False |
+| 11 | `X_SET_ADDRESS` | device | `00 05 2a00 0000 0000` | `0x80087a2` (std) | — | **y** | y | ok (0 B) | — | 0x8005aa8,0x80001ca | False |
+| 12 | `E_DEVICE` | device | `80 06 0001 0000 1200` | `0x80074b8` (gud) | — | **y** | y | ok (18 B) | — | 0x800045a,0x80001ca | False |
+| 13 | `E_CONFIG` | device | `80 06 0002 0000 5400` | `0x800745c` (gud) | — | **y** | y | ok (84 B) | — | 0x80001ca,0x80001d0 | False |
+| 14 | `E_STRING_0` | device | `80 06 0003 0000 ff00` | `0x80074be` (gud) | — | **y** | y | ok (4 B) | — | 0x80003ca,0x80001ca | False |
+| 15 | `E_STRING_1` | device | `80 06 0103 0904 ff00` | `0x8007494` (gud) | — | **y** | y | ok (14 B) | — | 0x8000484,0x80001ca | False |
+| 16 | `E_STRING_2` | device | `80 06 0203 0904 ff00` | `0x800749a` (gud) | — | **y** | y | ok (24 B) | — | 0x80001ca,0x80001d0 | False |
+| 17 | `E_STRING_3` | device | `80 06 0303 0904 ff00` | `0x80074a0` (gud) | — | **y** | y | ok (66 B) | — | 0x80001d0,0x800047e | False |
+| 18 | `X_GET_CONFIGURATION` | device | `80 08 0000 0000 0100` | `0x80087aa` (std) | — | **y** | y | ok (1 B) | — | 0x8007ba2,0x80001ca | False |
+| 19 | `X_SET_CONFIGURATION` | device | `00 09 0100 0000 0000` | `0x80087e4` (std) | — | **y** | y | ok (0 B) | — | 0x80001ca,0x80001d0 | False |
+| 20 | `X_SYNCH_FRAME` | device | `82 0c 0000 8100 0200` | `0x8008776` (std) | X_GET_STATUS_IF | **y** | y | ok (2 B) | — | 0x8006e22,0x80001ca | False |
+| 21 | `E_HID_CLASS_IF0` | iface0 | `81 06 0021 0000 0900` | `0x80074ae` (gud) | E_HID_CLASS_IF1, E_HID_CLASS_IF2 | **y** | y | ok (9 B) | — | 0x8005adc,0x80001ca | False |
+| 22 | `E_HID_REPORT_IF0` | iface0 | `81 06 0022 0000 4400` | `0x8007476` (gud) | E_HID_REPORT_IF1, E_HID_REPORT_IF2 | **y** | y | ok (68 B) | — | 0x8000490,0x80001ca | False |
+| 23 | `E_GET_REPORT_IF0` | iface0 | `a1 01 0001 0000 0800` | `0x8007754` (hook.2) | E_GET_REPORT_IF2 | **y** | y | ok (8 B) | — | 0x80022f2,0x80001ca | False |
+| 24 | `E_GET_IDLE_IF0` | iface0 | `a1 02 0000 0000 0100` | `0x800787a` (hook.2) | E_GET_IDLE_IF2 | **y** | y | ok (1 B) | — | 0x8005a82,0x80001ca | False |
+| 25 | `E_SET_IDLE_IF0` | iface0 | `21 0a 0000 0000 0000` | `0x800785e` (hook.2) | E_SET_IDLE_IF2 | **y** | y | ok (0 B) | — | 0x80004ec,0x80001ca | False |
+| 26 | `E_GET_PROTOCOL_IF0` | iface0 | `a1 03 0000 0000 0100` | `0x8006f96` (hook) | — | **y** | y | ok (1 B) | — | 0x8001b2a,0x80001ca | False |
+| 27 | `E_SET_PROTOCOL_IF0` | iface0 | `21 0b 0100 0000 0000` | `0x8006fde` (hook) | — | **y** | y | ok (0 B) | — | 0x8000448,0x80001ca | False |
+| 28 | `E_SET_REPORT_IF0` | iface0 | `21 09 0002 0000 0100 + 02` | `0x80070b8` (cb) | — | **y** | y | ok (0 B) | — | 0x80001ca,0x80001d0 | False |
+| 29 | `E_HID_CLASS_IF1` | iface1 | `81 06 0021 0100 0900` | `0x80074ae` (gud) | E_HID_CLASS_IF0, E_HID_CLASS_IF2 | **y** | y | ok (9 B) | — | 0x80001d0,0x80004ea | False |
+| 30 | `E_HID_REPORT_IF1` | iface1 | `81 06 0022 0100 7b00` | `0x8007476` (gud) | E_HID_REPORT_IF0, E_HID_REPORT_IF2 | **y** | y | ok (123 B) | — | 0x8005b68,0x80001ca | False |
+| 31 | `E_GET_IDLE_IF1` | iface1 | `a1 02 0000 0100 0100` | `0x800790a` (hook.2) | — | **y** | y | ok (1 B) | — | 0x80001d0,0x8000464 | False |
+| 32 | `E_SET_IDLE_IF1` | iface1 | `21 0a 0000 0100 0000` | `0x80078ee` (hook.2) | — | **y** | y | ok (0 B) | — | 0x8000488,0x80001ca | False |
+| 33 | `E_SET_PROTOCOL_IF1` | iface1 | `21 0b 0100 0100 0000` | `0x8006fe4` (hook) | E_SET_PROTOCOL_IF2 | **y** | y | ok (0 B) | — | 0x8000486,0x80001ca | False |
+| 34 | `E_SET_REPORT_IF1_ID1` | iface1 | `21 09 0102 0100 0200 + 0102` | `0x80070b6` (cb) | E_SET_REPORT_IF1_ID6 | **y** | y | ok (0 B) | — | 0x8007ba2,0x8002246 | False |
+| 35 | `E_SET_REPORT_IF1_ID6` | iface1 | `21 09 0602 0100 0200 + 0602` | `0x80070b6` (cb) | E_SET_REPORT_IF1_ID1 | **y** | y | ok (0 B) | — | 0x800047e,0x80001ca | False |
+| 36 | `E_HID_CLASS_IF2` | iface2 | `81 06 0021 0200 0900` | `0x80074ae` (gud) | E_HID_CLASS_IF0, E_HID_CLASS_IF1 | **y** | y | ok (9 B) | — | 0x80001d0,0x8001b2a | False |
+| 37 | `E_HID_REPORT_IF2` | iface2 | `81 06 0022 0200 1500` | `0x8007476` (gud) | E_HID_REPORT_IF0, E_HID_REPORT_IF1 | **y** | y | ok (21 B) | — | 0x80001ca,0x80001d0 | False |
+| 38 | `E_GET_REPORT_IF2` | iface2 | `a1 01 0001 0200 2000` | `0x8007754` (hook.2) | E_GET_REPORT_IF0 | **y** | y | ok (32 B) | — | 0x80022ac,0x80001ca | False |
+| 39 | `E_GET_IDLE_IF2` | iface2 | `a1 02 0000 0200 0100` | `0x800787a` (hook.2) | E_GET_IDLE_IF0 | **y** | y | ok (1 B) | — | 0x8006e34,0x80001ca | False |
+| 40 | `E_SET_IDLE_IF2` | iface2 | `21 0a 0000 0200 0000` | `0x800785e` (hook.2) | E_SET_IDLE_IF0 | **y** | y | ok (0 B) | — | 0x8005a8c,0x80001ca | False |
+| 41 | `E_SET_PROTOCOL_IF2` | iface2 | `21 0b 0100 0200 0000` | `0x8006fe4` (hook) | E_SET_PROTOCOL_IF1 | **y** | y | ok (0 B) | — | 0x8002250,0x80001ca | False |
+| 42 | `E_GET_REPORT_IF1_ID2` | iface1 | `a1 01 0201 0100 2000` | `0x80077c0` (hook.2) | E_GET_REPORT_IF1_ID3, E_GET_REPORT_IF1_ID4 | **y** | y | ok (6 B) | — | 0x80004fe,0x80001ca | False |
+| 43 | `E_GET_REPORT_IF1_ID3` | iface1 | `a1 01 0301 0100 2000` | `0x80077c0` (hook.2) | E_GET_REPORT_IF1_ID2, E_GET_REPORT_IF1_ID4 | **y** | y | ok (3 B) | — | 0x8005b60,0x80001ca | False |
+| 44 | `E_GET_REPORT_IF1_ID4` | iface1 | `a1 01 0401 0100 2000` | `0x80077c0` (hook.2) | E_GET_REPORT_IF1_ID2, E_GET_REPORT_IF1_ID3 | **y** | y | ok (3 B) | — | 0x8000478,0x80001ca | False |
+
 
 **Milestone reached: M8.** Interface parity is **3 / 3** — every interface the
 firmware's own CONFIGURATION descriptor declares passes a verified round trip.

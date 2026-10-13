@@ -1,0 +1,65 @@
+{
+ "inputs": 57,
+ "entries": 44,
+ "census_expansions": 24,
+ "extras": 20,
+ "reached": 44,
+ "reached_census": 24,
+ "live_of_reached": 44,
+ "not_reached": [],
+ "not_live": [],
+ "boot_hits_total": 0,
+ "next_entry_true": 0,
+ "next_entry_any_true": 0,
+ "credited_other_total": 0,
+ "controls_credited": {},
+ "controls_any_own": {
+  "ctl-desc-type-0x99": [],
+  "ctl-string-index-4": [],
+  "ctl-hid-class-iface-9": [],
+  "ctl-report-iface-9": [],
+  "ctl-get-protocol-iface-1": [],
+  "ctl-get-report-iface-9": [],
+  "ctl-set-report-iface-2": [],
+  "ctl-get-report-if1-id5": [],
+  "ctl-set-report-if1-id5-len2": [],
+  "ctl-vendor-request": [],
+  "ctl-get-interface": [],
+  "ctl-set-interface": [],
+  "ctl-silence": []
+ },
+ "inverted_live_matched": 0,
+ "live_all_inputs": 57,
+ "distinct_live_addr": 46,
+ "image_ok_all": true,
+ "backend_sha": [
+  "e9af21330154ad42484002fe4c7236321925df29fdeecb7aac2d15c371f5b355"
+ ],
+ "faults_total": 0,
+ "harness_errors": [],
+ "hook_log_pid_ok_all": true,
+ "hooks_registered_all": true,
+ "no_enum_patched": [
+  "True"
+ ],
+ "own_contexts": [
+  [
+   47,
+   1
+  ]
+ ],
+ "isr_contexts": [
+  [
+   31,
+   1
+  ]
+ ],
+ "load_range": [
+  13.24,
+  72.76
+ ],
+ "wall_range": [
+  20.8,
+  116.5
+ ]
+}
